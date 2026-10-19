@@ -220,7 +220,7 @@ dialog .body{display:flex;flex-direction:column;gap:10px}
 
 <script>
 // ============ API facts, read from the live novelai.net client (2026-10) ============
-const IMG = 'https://image.novelai.net', API = 'https://api.novelai.net';
+const IMG = 'https://image.novelai.net'; // account endpoints live here too now (api.novelai.net answers 400)
 const MAX_PX = 3145728;
 const HEAVY = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
 const FURRY_UC = '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic';
@@ -461,11 +461,12 @@ let SUB = null;
 async function refreshAnlas() {
   if (!getKey()) { $('#anlas').textContent = '未设置 Key'; return; }
   try {
-    const r = await fetch(API + '/user/subscription', { headers: { Authorization: 'Bearer ' + getKey() } });
+    const r = await fetch(IMG + '/user/subscription', { headers: { Authorization: 'Bearer ' + getKey() } });
     if (!r.ok) throw 0;
-    const s = await r.json(), t = s.trainingStepsLeft || {};
-    SUB = { anlas: (t.fixedTrainingStepsLeft || 0) + (t.purchasedTrainingSteps || 0), opus: s.tier === 3 && s.active };
-    $('#anlas').textContent = SUB.anlas + ' Anlas' + (SUB.opus ? ' · Opus' : '');
+    const s = await r.json(), t = s.trainingStepsLeft || {}, u = s.usage || {};
+    SUB = { anlas: (t.fixedTrainingStepsLeft || 0) + (t.purchasedTrainingSteps || 0), opus: s.tier === 3 && s.active && !u.isNegative };
+    $('#anlas').textContent = SUB.anlas + ' Anlas' + (s.tier === 3 ? ` · Opus ${u.percent ?? ''}%` : '');
+    $('#anlas').title = 'Opus 免费额度：' + (u.isNegative ? '已用完' : '可用') + '（≤1MP、≤28 步时每次请求免费 1 张）';
   } catch { $('#anlas').textContent = 'Anlas ?'; }
   updateCost();
 }
@@ -779,8 +780,9 @@ function renderEnhance(r) {
     i.oninput = () => { enh[k] = +i.value; enh.mag = 0; renderEnhance(r); };
   }
   if (!amts.length) { $('#enhInfo').textContent = '这张图尺寸无法再放大。'; $('#enhGo').disabled = true; return; }
-  const [w, h] = enhSize(r, enh.amt);
-  $('#enhInfo').textContent = `${r.w}×${r.h} → ${enh.amt === 'max' ? '服务器最多放大到 ' + Math.floor(r.w * Math.min(2, Math.sqrt(MAX_PX / (r.w * r.h)))) + '×…' : w + '×' + h}` +
+  const k = Math.min(2, Math.sqrt(MAX_PX / (r.w * r.h)));
+  const [w, h] = enh.amt === 'max' ? [Math.floor(r.w * k), Math.floor(r.h * k)] : enhSize(r, enh.amt); // max: server upscales, bills the bigger size
+  $('#enhInfo').textContent = `${r.w}×${r.h} → ${w}×${h}${enh.amt === 'max' ? '（服务器放大）' : ''}` +
     ` · ≈${price({ w, h, n: 1, strength: enh.str })} Anlas · 使用左侧当前的模型、prompt 与角色设置。`;
   $('#enhGo').disabled = false;
 }
