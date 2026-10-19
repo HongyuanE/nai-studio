@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NAI Studio</title>
+<style>
+:root{
+  --bg:#12142a;--panel:#191b36;--panel2:#212446;--line:#2f3263;--text:#e9e9f4;--muted:#9a9dc4;
+  --accent:#f5f3c2;--accent-ink:#14162c;--danger:#ef7d86;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:5px 10px}
+button:hover:not(:disabled){border-color:var(--muted)}
+button:disabled{opacity:.45;cursor:default}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
+textarea{width:100%;resize:vertical;line-height:1.5}
+textarea:disabled{opacity:.5}
+input[type=range]{padding:0;accent-color:var(--accent);flex:1}
+input[type=number]{width:84px}
+label{color:var(--muted);font-size:12px}
+.app{display:grid;grid-template-columns:390px 1fr 190px;height:100vh}
+#side{display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel);min-height:0}
+#controls{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.top b{font-size:15px;letter-spacing:.5px}
+.grow{flex:1}
+.anlas{color:var(--accent);font-variant-numeric:tabular-nums}
+.sec{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.sec>h3{margin:0;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:8px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sl{display:flex;align-items:center;gap:8px}
+.sl>label{width:64px;flex:none}
+.sl output{font-variant-numeric:tabular-nums;min-width:34px;text-align:right;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.char{border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--panel)}
+.char.off textarea{opacity:.45}
+.char .row button{padding:2px 7px}
+.ref{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--panel)}
+.ref img{width:64px;height:64px;object-fit:cover;border-radius:4px;flex:none}
+.ref .grow{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ref .sl>label{width:48px}
+.drop{border:1px dashed var(--line);border-radius:6px;padding:9px;text-align:center;color:var(--muted);cursor:pointer;font-size:12px}
+.drop.hover{border-color:var(--accent);color:var(--accent)}
+.hint{color:var(--muted);font-size:12px}
+.warn{color:var(--danger);font-size:12px}
+#genbar{padding:10px 12px;border-top:1px solid var(--line)}
+#gen{width:100%;background:var(--accent);color:var(--accent-ink);font-weight:600;border:0;padding:10px}
+#stage{display:flex;flex-direction:column;min-width:0;min-height:0}
+#toolbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line);align-items:center}
+#status{color:var(--muted);font-size:12px}
+#status.err{color:var(--danger)}
+#view{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;overflow:auto}
+#view img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;box-shadow:0 6px 30px #0008;
+  background:repeating-conic-gradient(#2a2d55 0 25%,#1e2044 0 50%) 0 0/20px 20px}
+#view .empty{color:var(--muted)}
+#info{padding:0 12px 6px;text-align:center;color:var(--muted);font-size:12px;min-height:18px}
+#batch{display:flex;gap:6px;padding:0 12px 10px;justify-content:center}
+#batch img{width:56px;height:56px;object-fit:cover;border-radius:4px;cursor:pointer;opacity:.6;border:2px solid transparent}
+#batch img.sel{opacity:1;border-color:var(--accent)}
+#hist{border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+#hist .top{justify-content:space-between}
+#histList{flex:1;overflow-y:auto;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
+#histList img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent}
+#histList img.sel{border-color:var(--accent)}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(440px,92vw)}
+dialog::backdrop{background:#0009}
+dialog h3{margin:0 0 10px}
+dialog .body{display:flex;flex-direction:column;gap:10px}
+#posBox{position:relative;margin:4px auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;cursor:crosshair;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:20% 20%}
+#posBox span{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;display:grid;place-items:center;
+  background:var(--panel2);border:2px solid var(--muted);font-size:12px;pointer-events:none}
+#posBox span.cur{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(1turn)}}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;height:auto}
+  #side{border-right:0;border-bottom:1px solid var(--line)}
+  #controls{overflow:visible}
+  #genbar{position:sticky;bottom:0;background:var(--panel);z-index:2}
+  #view{min-height:60vh}
+  #hist{border-left:0;border-top:1px solid var(--line)}
+  #histList{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side">
+  <div class="top">
+    <b>NAI Studio</b><span class="grow"></span>
+    <span class="anlas" id="anlas" title="Anlas 余额">—</span>
+    <button id="keyBtn">Key</button>
+  </div>
+  <div id="controls">
+
+    <div class="sec">
+      <div class="row"><label>模型</label><select id="model" class="grow"></select></div>
+      <div class="row">
+        <label>Mode</label>
+        <span class="seg" id="mode"><button data-v="anime">Anime</button><button data-v="furry">Furry</button></span>
+        <span id="effortWrap" class="row"><label>Effort</label>
+          <span class="seg" id="effort"><button data-v="medium">Medium</button><button data-v="high">High</button></span></span>
+      </div>
+      <div class="hint" id="modelHint"></div>
+    </div>
+
+    <div class="sec">
+      <h3>Prompt<span class="grow"></span>
+        <label id="tbgWrap"><input type="checkbox" id="tbg"> 透明背景</label>
+        <select id="quality" title="Quality Tags"></select>
+      </h3>
+      <textarea id="prompt" rows="8" placeholder="1girl, ...（V5：用引号写的文字会自动变成画面里的文字）"></textarea>
+    </div>
+
+    <div class="sec">
+      <h3>Undesired Content<span class="grow"></span><select id="ucPreset" title="UC Preset"></select></h3>
+      <textarea id="uc" rows="4"></textarea>
+    </div>
+
+    <div class="sec">
+      <h3>角色 Character Prompts<span class="grow"></span><button id="addChar">+ 角色</button></h3>
+      <div class="row"><label>位置</label>
+        <span class="seg" id="posMode"><button data-v="0">AI's Choice</button><button data-v="1">Custom</button></span></div>
+      <div id="chars" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>参考图 Reference Images</h3>
+      <div id="refs" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>图像设置</h3>
+      <div class="row">
+        <select id="resPreset"></select>
+        <span class="seg" id="orient"><button data-v="portrait" title="竖">▯</button><button data-v="landscape" title="横">▭</button><button data-v="square" title="方">□</button></span>
+      </div>
+      <div class="row">
+        <input type="number" id="w" step="64" min="64"> × <input type="number" id="h" step="64" min="64">
+        <span id="pix" class="hint"></span>
+      </div>
+      <div class="row"><label>张数</label><span class="seg" id="n"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></span></div>
+      <div class="sl"><label>Steps</label><input type="range" id="steps" min="1" max="50"><output></output></div>
+      <div class="sl"><label>Guidance</label><input type="range" id="scale" min="0" max="10" step="0.1"><output></output></div>
+      <div class="sl" id="rescaleRow"><label>Rescale</label><input type="range" id="rescale" min="0" max="1" step="0.02"><output></output></div>
+      <div class="row">
+        <label>Seed</label><input type="number" id="seed" placeholder="随机" style="width:120px">
+        <button id="seedClear" title="改回随机">↺</button>
+      </div>
+      <div class="row"><label>Sampler</label><select id="sampler" class="grow"></select></div>
+      <div class="row" id="noiseRow"><label>Noise Schedule</label><select id="noise" class="grow"></select></div>
+    </div>
+  </div>
+  <div id="genbar"><button id="gen">生成</button></div>
+</aside>
+
+<main id="stage">
+  <div id="toolbar">
+    <button data-act="download">下载 PNG</button>
+    <button data-act="seed">用此 Seed</button>
+    <button data-act="reuse">复用参数</button>
+    <button data-act="i2i">→ Img2Img</button>
+    <button data-act="enhance">Enhance</button>
+    <button data-act="upscale" id="upBtn">Upscale ×2</button>
+    <span class="grow"></span>
+    <span id="status"></span>
+  </div>
+  <div id="view"><div class="empty">还没有图。Ctrl+Enter 生成。</div></div>
+  <div id="info"></div>
+  <div id="batch"></div>
+</main>
+
+<aside id="hist">
+  <div class="top"><b>历史</b><button id="histDel">删除</button></div>
+  <div id="histList"></div>
+</aside>
+</div>
+
+<dialog id="keyDlg">
+  <h3>NovelAI API Key</h3>
+  <div class="body">
+    <div class="hint">只存在这个浏览器的 localStorage 里，请求直接发往 novelai.net，不经过任何其他服务器。<br>
+      获取：官网 → Account Settings → Get Persistent API Token（pst- 开头）。</div>
+    <input type="password" id="keyIn" placeholder="pst-..." autocomplete="off">
+    <div class="row" style="justify-content:flex-end"><button id="keyClear">清除</button><button id="keySave" class="on">保存</button></div>
+  </div>
+</dialog>
+
+<dialog id="posDlg">
+  <h3 id="posTitle">角色位置</h3>
+  <div class="body">
+    <div id="posBox"></div>
+    <div class="hint" id="posHint"></div>
+    <div class="row" style="justify-content:flex-end"><button onclick="posDlg.close()">完成</button></div>
+  </div>
+</dialog>
+
+<dialog id="enhDlg">
+  <h3>Enhance</h3>
+  <div class="body">
+    <div class="row"><label>放大倍数</label><span class="seg" id="enhAmt"></span></div>
+    <div class="row"><label>幅度 Magnitude</label><span class="seg" id="enhMag"></span></div>
+    <div class="sl"><label>Strength</label><input type="range" id="enhStr" min="0.01" max="0.99" step="0.01"><output></output></div>
+    <div class="sl"><label>Noise</label><input type="range" id="enhNoise" min="0" max="0.99" step="0.01"><output></output></div>
+    <div class="hint" id="enhInfo"></div>
+    <div class="row" style="justify-content:flex-end"><button onclick="enhDlg.close()">取消</button><button id="enhGo" class="on">Enhance</button></div>
+  </div>
+</dialog>
+
+<input type="file" id="filePick" accept="image/*" hidden>
+
+<script>
+// ============ API facts, read from the live novelai.net client (2026-10) ============
+const IMG = 'https://image.novelai.net', API = 'https://api.novelai.net';
+const MAX_PX = 3145728;
+const HEAVY = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
+const FURRY_UC = '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic';
+const HUMAN = HEAVY + ', @_@, mismatched pupils, glowing eyes, bad anatomy';
+const C45 = 'blurry, lowres, upscaled, artistic error, ';
+const MODELS = {
+  'v5-full':     { name: 'NAI Diffusion V5 Full', id: 'nai-diffusion-5-full', v5: true, safe: false, maxChars: 32,
+    q: { standard: 'very aesthetic, masterpiece, no text', light: 'very aesthetic, amazing quality, no text', none: '' },
+    uc: { heavy: HEAVY, light: 'lowres, bad hands, bad anatomy, artistic error, sepia, white haze, worst quality, very displeasing, jpeg artifacts, 0::ai-generated::', humanFocus: HUMAN, furryFocus: FURRY_UC, none: '' } },
+  'v5-curated':  { name: 'NAI Diffusion V5 Curated', id: 'nai-diffusion-5-curated', v5: true, safe: true, maxChars: 32 },
+  'v45-full':    { name: 'NAI Diffusion V4.5 Full', id: 'nai-diffusion-4-5-full', safe: false, maxChars: 6, vibeIE: 0.7,
+    q: { standard: 'very aesthetic, masterpiece, no text', none: '' },
+    uc: { heavy: HEAVY, light: 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page', humanFocus: HUMAN, furryFocus: FURRY_UC, none: '' } },
+  'v45-curated': { name: 'NAI Diffusion V4.5 Curated', id: 'nai-diffusion-4-5-curated', safe: true, maxChars: 6, vibeIE: 1,
+    q: { standard: 'very aesthetic, masterpiece, no text, -0.8::feet::, rating:general', none: '' },
+    uc: { heavy: C45 + 'film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page',
+          light: C45 + 'scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page',
+          humanFocus: C45 + 'film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page', none: '' } },
+};
+MODELS['v5-curated'].q = MODELS['v5-full'].q; MODELS['v5-curated'].uc = MODELS['v5-full'].uc;
+const HINT = { none: 0, standard: 1, heavy: 2, light: 3, humanFocus: 4, furryFocus: 5 };
+const LABEL = { standard: 'Standard', light: 'Light', heavy: 'Heavy', humanFocus: 'Human Focus', furryFocus: 'Furry Focus', none: 'None' };
+const RES = {
+  Normal:    { portrait: [832, 1216], landscape: [1216, 832], square: [1024, 1024] },
+  Large:     { portrait: [1024, 1536], landscape: [1536, 1024], square: [1472, 1472] },
+  Wallpaper: { portrait: [1088, 1920], landscape: [1920, 1088] },
+  Small:     { portrait: [512, 768], landscape: [768, 512], square: [640, 640] },
+  Custom:    null,
+};
+const SAMPLERS = [['k_euler_ancestral', 'Euler Ancestral'], ['k_euler', 'Euler'], ['k_dpmpp_2s_ancestral', 'DPM++ 2S Ancestral'],
+  ['k_dpmpp_2m_sde', 'DPM++ 2M SDE'], ['k_dpmpp_2m', 'DPM++ 2M'], ['k_dpmpp_sde', 'DPM++ SDE']];
+const REF_TYPES = [['character&style', 'Character & Style'], ['character', 'Character'], ['style', 'Style']];
+const REF_SIZES = [[1024, 1536], [1536, 1024], [1472, 1472]];
+const MAGNITUDE = [[0.2, 0], [0.4, 0], [0.5, 0], [0.6, 0], [0.7, 0.1]];
+
+// ============ helpers ============
+const $ = s => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const randSeed = () => Math.floor(Math.random() * 4294967295);
+const snap64 = v => Math.max(64, Math.round(v / 64) * 64);
+const rkey = () => [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+const fileToURL = f => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+const blobToB64 = b => fileToURL(b).then(u => u.slice(u.indexOf(',') + 1));
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const canvasB64 = c => new Promise(r => c.toBlob(b => blobToB64(b).then(r), 'image/png'));
+function status(msg, err) { const s = $('#status'); s.innerHTML = ''; s.className = err ? 'err' : ''; if (msg === true) s.append(el('span', { className: 'spin' }), '请求中…'); else s.textContent = msg || ''; }
+
+async function drawPng(src, w, h, { bg, fit } = {}) { // fit 'contain' letterboxes, default stretches
+  const img = await loadImg(src), c = el('canvas', { width: w, height: h }), g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, w, h); }
+  if (fit === 'contain') {
+    const k = Math.min(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k;
+    g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  } else g.drawImage(img, 0, 0, w, h);
+  return canvasB64(c);
+}
+
+// NovelAI answers with a zip of images; read it with the native DecompressionStream
+async function unzip(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), out = [];
+  let e = buf.byteLength - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('响应不是 zip');
+  let p = dv.getUint32(e + 16, true);
+  for (let i = dv.getUint16(e + 10, true); i > 0; i--) {
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true), name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+    const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    let blob = new Blob([u8.subarray(start, start + size)]);
+    if (method === 8) blob = await new Response(blob.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
+    out.push({ name, blob: new Blob([blob], { type: name.endsWith('.webp') ? 'image/webp' : 'image/png' }) });
+    p += 46 + nl + xl + cl;
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+// ============ storage: settings in localStorage, images in IndexedDB ============
+const DEF = { model: 'v5-full', mode: 'anime', effort: 'high', prompt: '', uc: '', quality: 'standard', ucPreset: 'heavy', tbg: false,
+  chars: [], useCoords: false, res: 'Normal', orient: 'portrait', w: 832, h: 1216, n: 1, steps: 23, scale: 7, rescale: 0, seed: '',
+  sampler: 'k_euler_ancestral', noise: 'karras', i2iStrength: 0.7, i2iNoise: 0 };
+let S = { ...DEF, ...JSON.parse(localStorage.getItem('nai-studio') || '{}') };
+const save = () => localStorage.setItem('nai-studio', JSON.stringify(S));
+const getKey = () => localStorage.getItem('nai-key') || '';
+
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('nai-studio', 1);
+  r.onupgradeneeded = () => { r.result.createObjectStore('h', { keyPath: 'id' }); r.result.createObjectStore('kv'); };
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+async function idb(store, mode, fn) {
+  const d = await dbp;
+  return new Promise((res, rej) => {
+    const t = d.transaction(store, mode), r = fn(t.objectStore(store));
+    t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error);
+  });
+}
+// reference images: { i2i: dataURL|null, vibes: [{src, strength, ie, enc:{}}], refs: [{src, type, strength, fidelity}] }
+let IM = { i2i: null, vibes: [], refs: [] };
+const saveIM = () => idb('kv', 'readwrite', s => s.put(IM, 'im'));
+
+// ============ model + prompt assembly (mirrors the official client) ============
+function M() {
+  const m = MODELS[S.model], medium = S.model === 'v5-full' && S.effort === 'medium';
+  return { ...m, id: medium ? 'nai-diffusion-5-full-medium' : m.id, medium };
+}
+const TEXT_RE = /(?:^|\s|[,.:[\]{}、。])text:(?!:)/i;
+const textAt = s => { const m = s.match(TEXT_RE); return m ? m.index + m[0].toLowerCase().lastIndexOf('text:') : -1; };
+function insertBeforeText(s, add, joiner) { // add a suffix before a "text:" block, else at the end
+  const segs = s.split('|'), at = textAt(segs[0]), head = (at < 0 ? segs[0] : segs[0].slice(0, at)).replace(/[\s,]+$/, '');
+  segs[0] = (head ? head + joiner : '') + add + (at < 0 ? '' : (add.endsWith(',') ? ' ' : ', ') + segs[0].slice(at));
+  return segs.join('|');
+}
+const QUOTES = { '"': '"', '“': '”', '「': '」', "'": "'", '‘': '’' };
+function quoted(s) { // spans in quotes; an apostrophe only opens after start/space/comma/period
+  const out = []; let i = 0;
+  while (i < s.length) {
+    const close = QUOTES[s[i]];
+    if (!close || (s[i] === "'" && i > 0 && !/[\s,.]/.test(s[i - 1]))) { i++; continue; }
+    const apos = close === "'" || close === '’'; let j = i + 1;
+    while (j < s.length && (s[j] !== close || (apos && /[\p{L}\p{N}]/u.test(s[j + 1] || '')))) j++;
+    if (j >= s.length) { i++; continue; }
+    const t = s.slice(i + 1, j).trim(); if (t) out.push(t); i = j + 1;
+  }
+  return out;
+}
+const CJK = /[　-〿぀-ゟ゠-ヿ＀-ﾟ一-龯㐀-䶿]/gu;
+function autoText(prompt, chars) { // V5: quoted text becomes a "teXt:" block
+  if (TEXT_RE.test(prompt) || chars.some(c => TEXT_RE.test(c.prompt))) return prompt;
+  const segs = prompt.split('|');
+  // ponytail: official groups characters into rows by the largest y-gap; plain y-then-x sort here
+  const ordered = S.useCoords ? [...chars].sort((a, b) => a.y - b.y || a.x - b.x) : chars;
+  const groups = [quoted(segs[0]), ...ordered.map(c => quoted(c.prompt))], all = groups.flat().join('');
+  if ((all.match(CJK) || []).length / all.length > 0.3) groups.forEach(g => g.reverse());
+  const spans = groups.flat();
+  if (!spans.length) return prompt;
+  const blk = 'teXt: ' + spans.join('\n\n'), head = segs[0].replace(/[\s,]+$/, '');
+  segs[0] = head ? head + ', ' + blk : blk;
+  return segs.join('|');
+}
+function solveUc(m, preset, prompt, user) {
+  const pre = m.uc[preset] || '';
+  let uc = pre ? (user.trim() ? pre + ', ' + user : pre) : user;
+  if (!m.safe && preset !== 'none' && !prompt.toLowerCase().includes('nsfw')) uc = 'nsfw, ' + uc;
+  return uc;
+}
+const gridSnap = v => [0.1, 0.3, 0.5, 0.7, 0.9][Math.min(4, Math.max(0, Math.floor(v * 5)))];
+
+// o: { image, strength, noise, w, h, n, seed, enhance, upscaledEnhance }
+async function buildRequest(o = {}) {
+  const m = M(), w = o.w ?? S.w, h = o.h ?? S.h;
+  const seed = o.seed ?? (S.seed === '' ? randSeed() : +S.seed);
+  const chars = S.chars.filter(c => c.enabled && c.prompt.trim());
+  const qId = m.q[S.quality] !== undefined ? S.quality : 'standard';
+  const ucId = m.medium ? 'heavy' : (m.uc[S.ucPreset] !== undefined ? S.ucPreset : 'heavy');
+  let suffix = m.q[qId];
+  if (m.v5 && S.tbg) suffix = suffix ? 'transparent background, ' + suffix : 'transparent background';
+  let prompt = suffix ? insertBeforeText(S.prompt, suffix, ', ') : S.prompt;
+  if (o.enhance) prompt = insertBeforeText(prompt, ', -2::upscaled, blurry::,', '');
+  if (S.mode === 'furry' && !/^(fur dataset|background dataset)/i.test(prompt.trim())) prompt = 'fur dataset, ' + prompt;
+  const uc = solveUc(m, ucId, prompt, m.medium ? '' : S.uc);
+  if (m.v5) prompt = autoText(prompt, chars);
+  const centers = chars.map(c => m.v5 ? { x: c.x, y: c.y } : { x: gridSnap(c.x), y: gridSnap(c.y) });
+  const cuc = c => m.medium ? '' : c.uc;
+  const p = {
+    params_version: 4, width: w, height: h, scale: S.scale, sampler: m.medium ? 'k_euler_ancestral' : S.sampler,
+    steps: m.medium ? 14 : S.steps, seed, n_samples: o.n ?? S.n,
+    ucPresetId: ucId, qualityPresetId: qId, tag_hint_qt: HINT[qId], tag_hint_uc_preset: HINT[ucId],
+    autoSmea: false, dynamic_thresholding: false, controlnet_strength: 1, legacy: false, add_original_image: true,
+    noise_schedule: m.v5 ? 'karras' : S.noise, legacy_v3_extend: false, use_coords: S.useCoords, legacy_uc: false,
+    normalize_reference_strength_multiple: true, inpaintImg2ImgStrength: 1,
+    characterPrompts: chars.map((c, i) => ({ prompt: c.prompt, uc: cuc(c), center: centers[i], enabled: true })),
+    negative_prompt: uc,
+    v4_prompt: { caption: { base_caption: prompt, char_captions: chars.map((c, i) => ({ char_caption: c.prompt, centers: [centers[i]] })) },
+      use_coords: S.useCoords, use_order: true },
+    v4_negative_prompt: { caption: { base_caption: uc, char_captions: chars.map((c, i) => ({ char_caption: cuc(c), centers: [centers[i]] })) },
+      legacy_uc: false },
+    image_format: 'webp',
+  };
+  if (!m.medium) p.cfg_rescale = S.rescale;
+  if (m.v5) { p.straight_alpha = true; if (S.tbg) p.tag_hint_transparent_background = true; }
+  else p.skip_cfg_above_sigma = null;
+  if (p.sampler === 'k_euler_ancestral') Object.assign(p, { deliberate_euler_ancestral_bug: false, prefer_brownian: true });
+  let action = 'generate';
+  if (o.image) {
+    action = 'img2img';
+    Object.assign(p, { image: await drawPng(o.image, w, h, { bg: m.v5 ? null : '#fff' }), strength: o.strength, noise: o.noise,
+      extra_noise_seed: seed > 0 ? seed - 1 : 1, color_correct: false });
+  }
+  if (o.upscaledEnhance) p.upscaled_enhance = true;
+  if (!m.v5 && IM.refs.length) { // Precise Reference (V4.5 only); vibes are skipped when refs exist
+    const refs = IM.refs.slice(0, 16);
+    p.director_reference_images_cached = await Promise.all(refs.map(async r => ({ cache_secret_key: rkey(), data: await padRef(r.src) })));
+    p.director_reference_descriptions = refs.map(r => ({ caption: { base_caption: r.type, char_captions: [] }, legacy_uc: false }));
+    p.director_reference_information_extracted = refs.map(() => 1);
+    p.director_reference_strength_values = refs.map(r => r.strength);
+    p.director_reference_secondary_strength_values = refs.map(r => +(1 - r.fidelity).toFixed(2));
+  } else if (!m.v5 && IM.vibes.length) {
+    const encs = [];
+    for (const v of IM.vibes) encs.push(await encodeVibe(v, m));
+    p.reference_image_multiple_cached = encs.map(data => ({ cache_secret_key: rkey(), data }));
+    let st = IM.vibes.map(v => v.strength); const sum = st.reduce((a, b) => a + Math.abs(b), 0);
+    if (st.length > 1 && sum > 1) st = st.map(s => +(s / sum).toFixed(4));
+    p.reference_strength_multiple = st;
+  }
+  return { input: prompt, model: m.id, action, parameters: p, use_new_shared_trial: true };
+}
+
+async function padRef(src) { // contain-fit on black into the closest official canvas
+  const img = await loadImg(src), ar = img.width / img.height;
+  const [w, h] = REF_SIZES.reduce((a, b) => Math.abs(Math.log(ar * b[1] / b[0])) < Math.abs(Math.log(ar * a[1] / a[0])) ? b : a);
+  return drawPng(src, w, h, { bg: '#000', fit: 'contain' });
+}
+
+// ============ network ============
+function headers() {
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey(),
+    'x-correlation-id': Math.random().toString(36).slice(2, 8), 'x-initiated-at': new Date().toISOString() };
+}
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+  if (r.ok) return r;
+  let msg = ''; try { msg = (await r.json()).message; } catch { }
+  const known = { 401: 'API Key 无效或已过期', 402: 'Anlas 不足', 429: '请求太频繁或已有生成在进行，稍后再试' };
+  throw new Error(`${r.status} ${known[r.status] || ''} ${msg || ''}`.trim());
+}
+async function encodeVibe(v, m) { // 2 Anlas per new (model, IE) encoding; cached on the vibe
+  const k = m.id + '|' + v.ie;
+  if (!v.enc[k]) {
+    status('编码 Vibe…');
+    const r = await post(IMG + '/ai/encode-vibe', { image: v.src.slice(v.src.indexOf(',') + 1), information_extracted: v.ie, model: m.id });
+    v.enc[k] = await blobToB64(await r.blob()); saveIM();
+  }
+  return v.enc[k];
+}
+let SUB = null;
+async function refreshAnlas() {
+  if (!getKey()) { $('#anlas').textContent = '未设置 Key'; return; }
+  try {
+    const r = await fetch(API + '/user/subscription', { headers: { Authorization: 'Bearer ' + getKey() } });
+    if (!r.ok) throw 0;
+    const s = await r.json(), t = s.trainingStepsLeft || {};
+    SUB = { anlas: (t.fixedTrainingStepsLeft || 0) + (t.purchasedTrainingSteps || 0), opus: s.tier === 3 && s.active };
+    $('#anlas').textContent = SUB.anlas + ' Anlas' + (SUB.opus ? ' · Opus' : '');
+  } catch { $('#anlas').textContent = 'Anlas ?'; }
+  updateCost();
+}
+
+// ============ Anlas estimate (same formula as the official client) ============
+function price(o = {}) {
+  const m = M(), w = o.w ?? S.w, h = o.h ?? S.h, px = w * h, steps = m.medium ? 14 : S.steps;
+  let base = Math.ceil(2.951823174884865e-6 * px + 5.753298233447344e-7 * px * steps * (m.medium ? 1 / 1.06521739 : 1));
+  if (m.v5) base *= 1.5;
+  const per = Math.max(Math.ceil(base * (o.strength ?? 1)), 2), n = o.n ?? S.n;
+  const refs = m.v5 ? 0 : IM.refs.length, vibes = m.v5 || refs ? [] : IM.vibes;
+  const paid = SUB?.opus && px <= 1048576 && steps <= 28 && !refs ? n - 1 : n;
+  return per * paid + 2 * vibes.filter(v => !v.enc[m.id + '|' + v.ie]).length + 2 * Math.max(0, vibes.length - 4) + 5 * refs * n;
+}
+const upPrice = px => px <= 1048576 ? 1 : px <= 1747627 ? 2 : px <= 2446678 ? 3 : px <= MAX_PX ? 4 : null;
+function updateCost() {
+  const n = S.n, i2i = IM.i2i ? { strength: S.i2iStrength } : {};
+  $('#gen').textContent = `生成 ${n} 张${IM.i2i ? '（Img2Img）' : ''} · ≈${price(i2i)} Anlas`;
+}
+
+// ============ UI: render from state ============
+function opts(sel, list, val) { sel.replaceChildren(...list.map(([v, t]) => el('option', { value: v, textContent: t }))); sel.value = val; }
+function segOn(id, val) { for (const b of $('#' + id).children) b.classList.toggle('on', b.dataset.v == val); }
+function slider(label, val, min, max, step, onInput) {
+  const out = el('output', { textContent: val });
+  const inp = el('input', { type: 'range', min, max, step, value: val, oninput: () => { out.textContent = inp.value; onInput(+inp.value); } });
+  return el('div', { className: 'sl' }, el('label', { textContent: label }), inp, out);
+}
+function dropZone(text, onFile) {
+  const d = el('div', { className: 'drop', textContent: text });
+  d.onclick = () => { const f = $('#filePick'); f.onchange = () => { if (f.files[0]) onFile(f.files[0]); f.value = ''; }; f.click(); };
+  d.ondragover = e => { e.preventDefault(); d.classList.add('hover'); };
+  d.ondragleave = () => d.classList.remove('hover');
+  d.ondrop = e => { e.preventDefault(); d.classList.remove('hover'); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) onFile(f); };
+  return d;
+}
+
+function renderAll() {
+  const m = M();
+  if (m.q[S.quality] === undefined) S.quality = 'standard';
+  if (m.uc[S.ucPreset] === undefined) S.ucPreset = 'heavy';
+  opts($('#model'), Object.entries(MODELS).map(([k, v]) => [k, v.name]), S.model);
+  segOn('mode', S.mode); segOn('effort', S.effort);
+  $('#effortWrap').hidden = S.model !== 'v5-full';
+  $('#modelHint').textContent = m.medium ? 'Medium：步数固定 14、Euler Ancestral，负面词固定为 Heavy 预设（你的 UC 与角色 UC 不发送）——官网同样如此。' : '';
+  $('#tbgWrap').hidden = !m.v5; $('#tbg').checked = S.tbg;
+  opts($('#quality'), Object.keys(m.q).map(k => [k, 'Quality: ' + LABEL[k]]), S.quality);
+  opts($('#ucPreset'), Object.keys(m.uc).map(k => [k, 'UC: ' + LABEL[k]]), m.medium ? 'heavy' : S.ucPreset);
+  $('#ucPreset').disabled = $('#uc').disabled = m.medium;
+  $('#prompt').value = S.prompt; $('#uc').value = S.uc;
+  segOn('posMode', +S.useCoords);
+  renderChars(); renderRefs();
+  opts($('#resPreset'), Object.keys(RES).map(k => [k, k]), S.res);
+  segOn('orient', S.orient);
+  $('#w').value = S.w; $('#h').value = S.h;
+  const px = S.w * S.h;
+  $('#pix').textContent = (px / 1e6).toFixed(2) + ' MP' + (px > MAX_PX ? ' 超出上限 3.1MP' : '');
+  $('#pix').className = px > MAX_PX ? 'warn' : 'hint';
+  segOn('n', S.n);
+  for (const [id, v] of [['steps', m.medium ? 14 : S.steps], ['scale', S.scale], ['rescale', S.rescale]]) {
+    $('#' + id).value = v; $('#' + id).nextElementSibling.textContent = v;
+  }
+  $('#steps').disabled = $('#sampler').disabled = m.medium;
+  $('#rescaleRow').hidden = m.medium;
+  $('#seed').value = S.seed;
+  opts($('#sampler'), SAMPLERS, m.medium ? 'k_euler_ancestral' : S.sampler);
+  $('#noiseRow').hidden = m.v5;
+  opts($('#noise'), ['karras', 'exponential', 'polyexponential'].map(v => [v, v]), S.noise);
+  updateCost();
+}
+
+function renderChars() {
+  const m = M(), box = $('#chars');
+  $('#addChar').disabled = S.chars.length >= m.maxChars;
+  box.replaceChildren(...S.chars.map((c, i) => {
+    const mv = d => { const j = i + d; if (j < 0 || j >= S.chars.length) return; [S.chars[i], S.chars[j]] = [S.chars[j], S.chars[i]]; save(); renderChars(); };
+    const pos = el('button', { textContent: `📍 ${m.v5 ? c.x.toFixed(2) : gridSnap(c.x)}, ${m.v5 ? c.y.toFixed(2) : gridSnap(c.y)}`, title: '设置位置',
+      hidden: !S.useCoords, onclick: () => openPos(i) });
+    const en = el('input', { type: 'checkbox', checked: c.enabled, title: '启用', onchange: () => { c.enabled = en.checked; save(); renderChars(); } });
+    const pr = el('textarea', { rows: 2, value: c.prompt, placeholder: '角色 prompt', oninput: () => { c.prompt = pr.value; save(); } });
+    const uc = el('textarea', { rows: 1, value: c.uc, placeholder: '该角色的 Undesired Content', disabled: m.medium, oninput: () => { c.uc = uc.value; save(); } });
+    return el('div', { className: 'char' + (c.enabled ? '' : ' off') },
+      el('div', { className: 'row' }, el('b', { textContent: `角色 ${i + 1}` }), pos, el('span', { className: 'grow' }), en,
+        el('button', { textContent: '↑', onclick: () => mv(-1) }), el('button', { textContent: '↓', onclick: () => mv(1) }),
+        el('button', { textContent: '✕', title: '删除', onclick: () => { S.chars.splice(i, 1); save(); renderChars(); } })),
+      pr, uc);
+  }));
+}
+function addChar(prompt) {
+  const used = new Set(S.chars.map(c => c.x + ',' + c.y));
+  const [x, y] = [[.5, .5], [.3, .5], [.7, .5], [.1, .5], [.9, .5]].find(([x, y]) => !used.has(x + ',' + y)) || [.5, .5];
+  S.chars.push({ prompt, uc: '', x, y, enabled: true }); save(); renderChars();
+}
+
+let posIdx = 0;
+function openPos(i) {
+  posIdx = i; const m = M(), box = $('#posBox'), W = 300 * Math.min(1, S.w / S.h), H = 300 * Math.min(1, S.h / S.w);
+  box.style.width = W + 'px'; box.style.height = H + 'px';
+  $('#posTitle').textContent = `角色 ${i + 1} 的位置`;
+  $('#posHint').textContent = m.v5 ? '点击放置（V5 可自由定位）。' : '点击放置（V4.5 会吸附到 5×5 网格）。';
+  const draw = () => box.replaceChildren(...S.chars.map((c, k) => {
+    const x = m.v5 ? c.x : gridSnap(c.x), y = m.v5 ? c.y : gridSnap(c.y);
+    return el('span', { className: k === posIdx ? 'cur' : '', textContent: k + 1, style: `left:${x * 100}%;top:${y * 100}%` });
+  }));
+  box.onclick = e => {
+    const r = box.getBoundingClientRect(), c = S.chars[posIdx];
+    c.x = +Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)).toFixed(3);
+    c.y = +Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)).toFixed(3);
+    if (!m.v5) { c.x = gridSnap(c.x); c.y = gridSnap(c.y); }
+    save(); draw(); renderChars();
+  };
+  draw(); posDlg.showModal();
+}
+
+function renderRefs() {
+  const m = M(), box = $('#refs'), kids = [];
+  const thumb = src => el('img', { src });
+  kids.push(el('div', { className: 'sub', textContent: 'Image2Image' }));
+  if (IM.i2i) kids.push(el('div', { className: 'ref' }, thumb(IM.i2i), el('div', { className: 'grow' },
+    slider('Strength', S.i2iStrength, 0.01, 0.99, 0.01, v => { S.i2iStrength = v; save(); updateCost(); }),
+    slider('Noise', S.i2iNoise, 0, 0.99, 0.01, v => { S.i2iNoise = v; save(); })),
+    el('button', { textContent: '✕', onclick: () => { IM.i2i = null; saveIM(); renderRefs(); updateCost(); } })));
+  else kids.push(dropZone('点击或拖入底图', async f => setI2I(await fileToURL(f))));
+
+  kids.push(el('div', { className: 'sub', textContent: 'Vibe Transfer' }));
+  IM.vibes.forEach((v, i) => kids.push(el('div', { className: 'ref' }, thumb(v.src), el('div', { className: 'grow' },
+    slider('强度', v.strength, 0, 1, 0.01, x => { v.strength = x; saveIM(); }),
+    slider('信息提取', v.ie, 0.01, 1, 0.01, x => { v.ie = x; saveIM(); updateCost(); }),
+    el('div', { className: 'hint', textContent: v.enc[m.id + '|' + v.ie] ? '已编码' : '首次使用会编码（2 Anlas）' })),
+    el('button', { textContent: '✕', onclick: () => { IM.vibes.splice(i, 1); saveIM(); renderRefs(); updateCost(); } }))));
+  kids.push(dropZone('+ 添加 Vibe（V4.5）', async f => addRef('vibes', { src: await fileToURL(f), strength: 0.6, ie: MODELS['v45-full'].vibeIE, enc: {} })));
+
+  kids.push(el('div', { className: 'sub', textContent: 'Precise Reference' }));
+  IM.refs.forEach((r, i) => {
+    const type = el('select', { onchange: () => { r.type = type.value; saveIM(); } });
+    opts(type, REF_TYPES, r.type);
+    kids.push(el('div', { className: 'ref' }, thumb(r.src), el('div', { className: 'grow' }, type,
+      slider('强度', r.strength, 0, 1, 0.01, x => { r.strength = x; saveIM(); }),
+      slider('Fidelity', r.fidelity, 0, 1, 0.01, x => { r.fidelity = x; saveIM(); })),
+      el('button', { textContent: '✕', onclick: () => { IM.refs.splice(i, 1); saveIM(); renderRefs(); updateCost(); } })));
+  });
+  if (IM.refs.length < 16) kids.push(dropZone('+ 添加角色/风格参考（V4.5，+5 Anlas/张）', async f => addRef('refs', { src: await fileToURL(f), type: 'character&style', strength: 1, fidelity: 1 })));
+
+  const notes = [];
+  if (m.v5) notes.push('V5 目前没有 Vibe / Precise Reference（官网也一样，说是后续加）。添加它们会自动切到 V4.5。' + (IM.vibes.length || IM.refs.length ? ' 当前为 V5，下面这些参考不会发送。' : ''));
+  if (IM.vibes.length && IM.refs.length) notes.push('同时有两种时只发送 Precise Reference，Vibe 被忽略（官网行为）。');
+  if (notes.length) kids.push(el('div', { className: 'hint', textContent: notes.join(' ') }));
+  box.replaceChildren(...kids);
+}
+function addRef(kind, item) {
+  IM[kind].push(item); saveIM();
+  if (M().v5) { S.model = S.model === 'v5-curated' ? 'v45-curated' : 'v45-full'; save(); status('已切换到 ' + MODELS[S.model].name); }
+  renderAll();
+}
+async function setI2I(url) { // official sizing rule for a new base image
+  const img = await loadImg(url); let [w, h] = [img.width, img.height];
+  if (!(w % 64 === 0 && h % 64 === 0 && w * h <= MAX_PX)) {
+    const land = w > h, ar = land ? h / w : w / h;
+    const c = [[snap64(1216 * ar), 1216], [896, snap64(896 / ar)]].filter(([a, b]) => a * b <= MAX_PX)
+      .sort((p, q) => Math.abs(p[0] / p[1] - ar) - Math.abs(q[0] / q[1] - ar))[0] || [512, 512];
+    [w, h] = land ? [c[1], c[0]] : c;
+  }
+  IM.i2i = url; saveIM();
+  Object.assign(S, { w, h, res: 'Custom', orient: w > h ? 'landscape' : w < h ? 'portrait' : 'square' });
+  for (const [k, p] of Object.entries(RES)) for (const [o, d] of Object.entries(p || {})) if (d[0] === w && d[1] === h) Object.assign(S, { res: k, orient: o });
+  save(); renderAll();
+}
+
+// ============ UI: wiring ============
+$('#model').onchange = e => { S.model = e.target.value; save(); renderAll(); };
+for (const [id, key] of [['mode', 'mode'], ['effort', 'effort'], ['n', 'n'], ['posMode', 'useCoords']])
+  $('#' + id).onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S[key] = key === 'n' ? +b.dataset.v : key === 'useCoords' ? b.dataset.v === '1' : b.dataset.v; save(); renderAll();
+  };
+$('#tbg').onchange = e => { S.tbg = e.target.checked; save(); };
+$('#quality').onchange = e => { S.quality = e.target.value; save(); };
+$('#ucPreset').onchange = e => { S.ucPreset = e.target.value; save(); };
+$('#prompt').oninput = e => { S.prompt = e.target.value; save(); };
+$('#uc').oninput = e => { S.uc = e.target.value; save(); };
+$('#addChar').onclick = () => addChar('girl, ');
+$('#resPreset').onchange = e => { S.res = e.target.value; const p = RES[S.res]; if (p) { if (!p[S.orient]) S.orient = 'portrait'; [S.w, S.h] = p[S.orient]; } save(); renderAll(); };
+$('#orient').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return; S.orient = b.dataset.v;
+  const p = RES[S.res];
+  if (p && p[S.orient]) [S.w, S.h] = p[S.orient];
+  else if (p) S.res = 'Custom';
+  if (S.res === 'Custom') {
+    if (S.orient === 'square') S.w = S.h = snap64(Math.sqrt(S.w * S.h));
+    else if ((S.orient === 'landscape') !== (S.w > S.h)) [S.w, S.h] = [S.h, S.w];
+  }
+  save(); renderAll();
+};
+for (const id of ['w', 'h']) $('#' + id).onchange = e => { S[id] = snap64(+e.target.value || 64); S.res = 'Custom'; save(); renderAll(); };
+for (const id of ['steps', 'scale', 'rescale']) $('#' + id).oninput = e => { S[id] = +e.target.value; e.target.nextElementSibling.textContent = S[id]; save(); updateCost(); };
+$('#seed').onchange = e => { S.seed = e.target.value === '' ? '' : Math.max(0, Math.floor(+e.target.value)); save(); };
+$('#seedClear').onclick = () => { S.seed = ''; save(); renderAll(); };
+$('#sampler').onchange = e => { S.sampler = e.target.value; save(); };
+$('#noise').onchange = e => { S.noise = e.target.value; save(); };
+
+$('#keyBtn').onclick = () => { $('#keyIn').value = getKey(); keyDlg.showModal(); };
+$('#keySave').onclick = () => { localStorage.setItem('nai-key', $('#keyIn').value.trim()); keyDlg.close(); refreshAnlas(); };
+$('#keyClear').onclick = () => { localStorage.removeItem('nai-key'); $('#keyIn').value = ''; keyDlg.close(); refreshAnlas(); };
+
+// ============ results, history ============
+let hist = [], view = { recs: [], i: 0 }, busy = false;
+const urls = new Map();
+const urlOf = r => { if (!urls.has(r.id)) urls.set(r.id, URL.createObjectURL(r.blob)); return urls.get(r.id); };
+const cur = () => view.recs[view.i];
+
+async function addResults(files, body, kind) {
+  const recs = [];
+  for (const [i, f] of files.entries()) {
+    const bmp = await createImageBitmap(f.blob);
+    recs.push({ id: Date.now() + '-' + i, ts: Date.now(), kind, blob: f.blob, w: bmp.width, h: bmp.height,
+      seed: (body?.parameters.seed ?? 0) + i, model: body?.model, prompt: body?.input,
+      state: kind === 'upscale' ? cur()?.state : { ...S, seed: '' } });
+    bmp.close();
+  }
+  await idb('h', 'readwrite', s => recs.forEach(r => s.put(r)));
+  hist.unshift(...recs.slice().reverse()); renderHist(); show(recs, 0);
+}
+function show(recs, i = 0) {
+  view = { recs, i }; const r = cur();
+  $('#view').replaceChildren(r ? el('img', { src: urlOf(r) }) : el('div', { className: 'empty', textContent: '还没有图。Ctrl+Enter 生成。' }));
+  $('#info').textContent = r ? `${r.kind === 'gen' ? '' : r.kind + ' · '}${r.w}×${r.h}${r.kind === 'upscale' ? '' : ' · seed ' + r.seed}${r.model ? ' · ' + r.model : ''}` : '';
+  $('#batch').replaceChildren(...(recs.length > 1 ? recs.map((x, k) => el('img', { src: urlOf(x), className: k === i ? 'sel' : '', onclick: () => show(recs, k) })) : []));
+  for (const img of $('#histList').children) img.classList.toggle('sel', img.dataset.id === r?.id);
+  updateTools();
+}
+function renderHist() {
+  $('#histList').replaceChildren(...hist.map(r => el('img', { src: urlOf(r), loading: 'lazy', title: r.prompt || '', onclick: () => show([r]) },)));
+  for (const [k, img] of [...$('#histList').children].entries()) img.dataset.id = hist[k].id;
+}
+function updateTools() {
+  const r = cur();
+  for (const b of $('#toolbar').querySelectorAll('button')) b.disabled = busy || !r;
+  if (r) { const p = upPrice(r.w * r.h); $('#upBtn').textContent = p ? `Upscale ×2 · ${p} Anlas` : 'Upscale（图太大）'; if (!p) $('#upBtn').disabled = true; }
+  $('#gen').disabled = busy;
+}
+$('#histDel').onclick = async () => {
+  const r = cur(); if (!r) return;
+  await idb('h', 'readwrite', s => s.delete(r.id));
+  URL.revokeObjectURL(urls.get(r.id)); urls.delete(r.id);
+  const k = hist.findIndex(x => x.id === r.id); hist.splice(k, 1); renderHist();
+  const rest = view.recs.filter(x => x.id !== r.id);
+  rest.length ? show(rest, Math.min(view.i, rest.length - 1)) : show(hist[k] ? [hist[k]] : []);
+};
+
+async function run(fn) {
+  if (busy) return;
+  if (!getKey()) { keyDlg.showModal(); return; }
+  busy = true; updateTools(); status(true);
+  try { await fn(); status(''); } catch (e) { console.error(e); status(e.message || String(e), true); }
+  finally { busy = false; updateTools(); refreshAnlas(); }
+}
+async function generate(o) {
+  const body = await buildRequest(o);
+  status(true);
+  const r = await post(IMG + '/ai/generate-image', body);
+  const files = (await unzip(await r.arrayBuffer())).filter(f => f.name.startsWith('image'));
+  if (!files.length) throw new Error('响应里没有图片');
+  await addResults(files, body, o.enhance || o.upscaledEnhance ? 'enhance' : 'gen');
+}
+$('#gen').onclick = () => run(() => generate(IM.i2i ? { image: IM.i2i, strength: S.i2iStrength, noise: S.i2iNoise } : {}));
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#gen').click(); });
+
+async function asPng(blob) {
+  if (blob.type === 'image/png') return blob;
+  const bmp = await createImageBitmap(blob), c = el('canvas', { width: bmp.width, height: bmp.height });
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  return new Promise(r => c.toBlob(r, 'image/png'));
+}
+$('#toolbar').onclick = async e => {
+  const act = e.target.closest('button')?.dataset.act, r = cur(); if (!act || !r) return;
+  if (act === 'download') {
+    const a = el('a', { href: URL.createObjectURL(await asPng(r.blob)), download: `nai-${r.kind}-${r.seed}-${r.ts}.png` });
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  if (act === 'seed') { S.seed = r.seed; save(); renderAll(); status('Seed 已填入 ' + r.seed); }
+  if (act === 'reuse' && r.state) { S = { ...DEF, ...r.state, seed: r.kind === 'gen' ? r.seed : '' }; save(); renderAll(); status('参数已复用'); }
+  if (act === 'i2i') setI2I(await fileToURL(await asPng(r.blob)));
+  if (act === 'enhance') openEnhance(r);
+  if (act === 'upscale') run(async () => {
+    const res = await post(IMG + '/ai/upscale', { image: await blobToB64(await asPng(r.blob)), model: 'nai-diffusion-5-curated', declared_blur_sigma: 0 });
+    const files = (await unzip(await res.arrayBuffer())).filter(f => f.name.startsWith('image'));
+    if (!files.length) throw new Error('响应里没有图片');
+    await addResults(files, null, 'upscale');
+  });
+};
+
+// ============ Enhance (img2img of the selected image with the current settings) ============
+const enh = { amt: null, mag: 3, str: 0.5, noise: 0 };
+function enhanceAmounts(r) {
+  const px = r.w * r.h;
+  let a = (r.w === 832 && r.h === 1216) || (r.w === 1216 && r.h === 832) ? [1.5, 1]
+    : [2, 1.5, 1].filter(s => Math.floor(r.w * s) * Math.floor(r.h * s) <= MAX_PX && Math.floor(r.w * s) % 64 === 0 && Math.floor(r.h * s) % 64 === 0);
+  if (M().v5 && px < 2516582.4) a = ['max', ...a];
+  return a;
+}
+const enhSize = (r, a) => a === 'max' ? [r.w, r.h] : [snap64(Math.floor(r.w * a)), snap64(Math.floor(r.h * a))];
+function renderEnhance(r) {
+  const amts = enhanceAmounts(r);
+  if (!amts.includes(enh.amt)) enh.amt = amts[0];
+  $('#enhAmt').replaceChildren(...amts.map(a => el('button', { textContent: a === 'max' ? 'Max' : a + '×', className: a === enh.amt ? 'on' : '',
+    onclick: () => { enh.amt = a; renderEnhance(r); } })));
+  $('#enhMag').replaceChildren(...MAGNITUDE.map(([s, n], k) => el('button', { textContent: k + 1, className: k + 1 === enh.mag ? 'on' : '',
+    onclick: () => { Object.assign(enh, { mag: k + 1, str: s, noise: n }); renderEnhance(r); } })));
+  for (const [id, k] of [['enhStr', 'str'], ['enhNoise', 'noise']]) {
+    const i = $('#' + id); i.value = enh[k]; i.nextElementSibling.textContent = enh[k];
+    i.oninput = () => { enh[k] = +i.value; enh.mag = 0; renderEnhance(r); };
+  }
+  if (!amts.length) { $('#enhInfo').textContent = '这张图尺寸无法再放大。'; $('#enhGo').disabled = true; return; }
+  const [w, h] = enhSize(r, enh.amt);
+  $('#enhInfo').textContent = `${r.w}×${r.h} → ${enh.amt === 'max' ? '服务器最多放大到 ' + Math.floor(r.w * Math.min(2, Math.sqrt(MAX_PX / (r.w * r.h)))) + '×…' : w + '×' + h}` +
+    ` · ≈${price({ w, h, n: 1, strength: enh.str })} Anlas · 使用左侧当前的模型、prompt 与角色设置。`;
+  $('#enhGo').disabled = false;
+}
+function openEnhance(r) { renderEnhance(r); enhDlg.showModal(); }
+$('#enhGo').onclick = () => {
+  const r = cur(), [w, h] = enhSize(r, enh.amt); enhDlg.close();
+  run(async () => generate({ image: await fileToURL(r.blob), strength: enh.str, noise: enh.noise, w, h, n: 1, seed: randSeed(),
+    enhance: enh.amt !== 'max', upscaledEnhance: enh.amt === 'max' }));
+};
+
+// ============ boot ============
+(async () => {
+  IM = { ...IM, ...(await idb('kv', 'readonly', s => s.get('im')) || {}) };
+  hist = ((await idb('h', 'readonly', s => s.getAll())) || []).sort((a, b) => b.ts - a.ts);
+  renderAll(); renderHist(); show(hist.length ? [hist[0]] : []);
+  refreshAnlas();
+  if (!getKey()) keyDlg.showModal();
+})();
+</script>
+</body>
+</html>
