@@ -18,7 +18,7 @@ button:hover:not(:disabled){border-color:var(--muted)}
 button:disabled{opacity:.45;cursor:default}
 button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
-textarea{width:100%;resize:vertical;line-height:1.5}
+textarea{width:100%;resize:vertical;line-height:1.5;overflow-y:hidden}
 textarea:disabled{opacity:.5}
 input[type=range]{padding:0;accent-color:var(--accent);flex:1}
 input[type=number]{width:84px}
@@ -45,6 +45,14 @@ label{color:var(--muted);font-size:12px}
 .char .row button{padding:2px 7px}
 .ref{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--panel)}
 .ref img{width:64px;height:64px;object-fit:cover;border-radius:4px;flex:none}
+.thumb{position:relative;width:64px;height:64px;flex:none}
+.thumb img{position:absolute;inset:0;object-fit:fill}
+.thumb img+img{opacity:.6}
+dialog.wide{width:min(960px,96vw)}
+#maskStack{display:grid;place-items:center;max-height:68vh}
+#maskStack canvas{grid-area:1/1;max-width:100%;max-height:68vh;border-radius:6px}
+#maskCv{touch-action:none;opacity:.6;cursor:crosshair}
+.chk{display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px}
 .ref .grow{display:flex;flex-direction:column;gap:3px;min-width:0}
 .ref .sl>label{width:48px}
 .drop{border:1px dashed var(--line);border-radius:6px;padding:9px;text-align:center;color:var(--muted);cursor:pointer;font-size:12px}
@@ -169,8 +177,10 @@ dialog .body{display:flex;flex-direction:column;gap:10px}
     <button data-act="seed">用此 Seed</button>
     <button data-act="reuse">复用参数</button>
     <button data-act="i2i">→ Img2Img</button>
+    <button data-act="inpaint">Inpaint</button>
     <button data-act="enhance">Enhance</button>
     <button data-act="upscale" id="upBtn">Upscale ×2</button>
+    <button id="impBtn" title="读取图片里的 NovelAI 参数，或作为参考图">导入图片</button>
     <span class="grow"></span>
     <span id="status"></span>
   </div>
@@ -216,6 +226,33 @@ dialog .body{display:flex;flex-direction:column;gap:10px}
   </div>
 </dialog>
 
+<dialog id="maskDlg" class="wide">
+  <h3>Inpaint 蒙版</h3>
+  <div class="body">
+    <div id="maskStack"><canvas id="maskBg"></canvas><canvas id="maskCv"></canvas></div>
+    <div class="row">
+      <span class="seg" id="maskTool"><button data-v="paint">画</button><button data-v="erase">擦</button></span>
+      <label>笔刷</label><input type="range" id="brush" min="8" max="240" step="4" style="flex:1;min-width:100px">
+      <button id="maskClear">清空</button>
+      <button onclick="maskDlg.close()">取消</button><button id="maskDone" class="on">完成</button>
+    </div>
+    <div class="hint">涂抹要重画的区域。生成后只有涂过的区域会变，其余部分保持原图。</div>
+  </div>
+</dialog>
+
+<dialog id="impDlg">
+  <h3>导入图片</h3>
+  <div class="body">
+    <div class="row" style="align-items:flex-start"><img id="impImg" style="width:96px;height:96px;object-fit:cover;border-radius:6px">
+      <div class="grow hint" id="impInfo"></div></div>
+    <div id="impOpts" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button id="impI2I">作为 Img2Img</button><button id="impVibe">作为 Vibe</button><button id="impRef">作为 Precise Ref</button>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button onclick="impDlg.close()">取消</button><button id="impGo" class="on">导入设置</button></div>
+  </div>
+</dialog>
+
 <input type="file" id="filePick" accept="image/*" hidden>
 
 <script>
@@ -255,6 +292,14 @@ const SAMPLERS = [['k_euler_ancestral', 'Euler Ancestral'], ['k_euler', 'Euler']
 const REF_TYPES = [['character&style', 'Character & Style'], ['character', 'Character'], ['style', 'Style']];
 const REF_SIZES = [[1024, 1536], [1536, 1024], [1472, 1472]];
 const MAGNITUDE = [[0.2, 0], [0.4, 0], [0.5, 0], [0.6, 0], [0.7, 0.1]];
+const INPAINT = { // the official client sends V5 Curated inpaints to the V4.5 Curated inpainting model
+  'nai-diffusion-5-full': 'nai-diffusion-5-full-inpainting', 'nai-diffusion-5-full-medium': 'nai-diffusion-5-full-medium-inpainting',
+  'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
+  'nai-diffusion-4-5-full': 'nai-diffusion-4-5-full-inpainting', 'nai-diffusion-4-5-curated': 'nai-diffusion-4-5-curated-inpainting' };
+const SOURCE = { // metadata "Source" hash -> model (same table as the official importer)
+  '657484A5': 'v5-full', '0ADF9AB7': 'v5-full', '93F4BD30': 'v5-medium', '70AB5786': 'v5-medium', 'DB276663': 'v5-curated',
+  '4BDE2A90': 'v45-full', '1229B44F': 'v45-full', 'B9F340FD': 'v45-full', 'F3D95188': 'v45-full',
+  'C02D4F98': 'v45-curated', '5AB81C7C': 'v45-curated', 'B5A2A797': 'v45-curated' };
 
 // ============ helpers ============
 const $ = s => document.querySelector(s);
@@ -299,10 +344,60 @@ async function unzip(buf) {
   return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
+// ============ NovelAI image metadata: read (PNG tEXt / WebP EXIF / stealth alpha) and write (PNG tEXt) ============
+async function readMeta(blob) {
+  const u8 = new Uint8Array(await blob.arrayBuffer()), utf8 = new TextDecoder(), dv = new DataView(u8.buffer);
+  const ok = m => (m && m.Comment ? m : null);
+  if (u8[0] === 0x89 && u8[1] === 0x50) { // PNG text chunks
+    const out = {};
+    for (let p = 8; p + 12 <= u8.length;) {
+      const len = dv.getUint32(p), type = String.fromCharCode(...u8.subarray(p + 4, p + 8)), d = u8.subarray(p + 8, p + 8 + len);
+      const z = d.indexOf(0), key = utf8.decode(d.subarray(0, z));
+      if (type === 'tEXt') out[key] = utf8.decode(d.subarray(z + 1));
+      if (type === 'iTXt' && d[z + 1] === 0) { let q = d.indexOf(0, z + 3) + 1; q = d.indexOf(0, q) + 1; out[key] = utf8.decode(d.subarray(q)); }
+      if (type === 'IEND') break;
+      p += 12 + len;
+    }
+    if (out.Comment) return out;
+  } else { // WebP: NovelAI writes {"Comment": ...} as JSON into the EXIF UserComment
+    const s = new TextDecoder('latin1').decode(u8), i = s.indexOf('{"Comment":');
+    if (i >= 0) { const j = s.indexOf('\0', i); try { return ok(JSON.parse(utf8.decode(u8.subarray(i, j < 0 ? undefined : j)))); } catch { } }
+  }
+  try { // stealth: gzip JSON in the alpha LSBs, column-major, behind the "stealth_pngcomp" magic
+    const bmp = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    const w = bmp.width, h = bmp.height, c = el('canvas', { width: w, height: h }), g = c.getContext('2d');
+    g.drawImage(bmp, 0, 0); const px = g.getImageData(0, 0, w, h).data;
+    let a = 0; const byte = () => { let v = 0; for (let n = 0; n < 8; n++, a++) v |= (px[4 * ((a % h) * w + Math.floor(a / h)) + 3] & 1) << (7 - n); return v; };
+    const magic = 'stealth_pngcomp';
+    if (w * h < (magic.length + 4) * 8) return null;
+    for (const ch of magic) if (byte() !== ch.charCodeAt(0)) return null;
+    const bits = ((byte() << 24) | (byte() << 16) | (byte() << 8) | byte()) >>> 0;
+    if (!bits || bits > w * h - a) return null;
+    const data = new Uint8Array(Math.ceil(bits / 8)); for (let k = 0; k < data.length; k++) data[k] = byte();
+    const m = JSON.parse(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+    if (m.Comment && typeof m.Comment !== 'string') m.Comment = JSON.stringify(m.Comment);
+    return ok(m);
+  } catch { return null; }
+}
+const CRC = Array.from({ length: 256 }, (_, n) => { for (let k = 0; k < 8; k++) n = n & 1 ? 0xEDB88320 ^ (n >>> 1) : n >>> 1; return n >>> 0; });
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length), dv = new DataView(out.buffer);
+  dv.setUint32(0, data.length); out.set(new TextEncoder().encode(type), 4); out.set(data, 8);
+  let c = ~0; for (const x of out.subarray(4, 8 + data.length)) c = CRC[(c ^ x) & 255] ^ (c >>> 8);
+  dv.setUint32(8 + data.length, ~c >>> 0);
+  return out;
+}
+async function pngWithMeta(png, meta) { // canvas PNGs start with an IHDR that ends at byte 33
+  if (!meta) return png;
+  const u8 = new Uint8Array(await png.arrayBuffer()), enc = new TextEncoder();
+  const chunks = Object.entries(meta).map(([k, v]) => pngChunk('tEXt', enc.encode(k + '\0' + String(v))));
+  return new Blob([u8.subarray(0, 33), ...chunks, u8.subarray(33)], { type: 'image/png' });
+}
+
 // ============ storage: settings in localStorage, images in IndexedDB ============
 const DEF = { model: 'v5-full', mode: 'anime', effort: 'high', prompt: '', uc: '', quality: 'standard', ucPreset: 'heavy', tbg: false,
   chars: [], useCoords: false, res: 'Normal', orient: 'portrait', w: 832, h: 1216, n: 1, steps: 23, scale: 7, rescale: 0, seed: '',
-  sampler: 'k_euler_ancestral', noise: 'karras', i2iStrength: 0.7, i2iNoise: 0 };
+  sampler: 'k_euler_ancestral', noise: 'karras', i2iStrength: 0.7, i2iNoise: 0, inpaintStrength: 1 };
 let S = { ...DEF, ...JSON.parse(localStorage.getItem('nai-studio') || '{}') };
 const save = () => localStorage.setItem('nai-studio', JSON.stringify(S));
 const getKey = () => localStorage.getItem('nai-key') || '';
@@ -319,8 +414,8 @@ async function idb(store, mode, fn) {
     t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error);
   });
 }
-// reference images: { i2i: dataURL|null, vibes: [{src, strength, ie, enc:{}}], refs: [{src, type, strength, fidelity}] }
-let IM = { i2i: null, vibes: [], refs: [] };
+// reference images: { i2i: dataURL|null, mask: dataURL|null (inpaint strokes, alpha = paint), vibes: [{src, strength, ie, enc:{}}], refs: [{src, type, strength, fidelity}] }
+let IM = { i2i: null, mask: null, vibes: [], refs: [] };
 const saveIM = () => idb('kv', 'readwrite', s => s.put(IM, 'im'));
 
 // ============ model + prompt assembly (mirrors the official client) ============
@@ -405,11 +500,22 @@ async function buildRequest(o = {}) {
   if (m.v5) { p.straight_alpha = true; if (S.tbg) p.tag_hint_transparent_background = true; }
   else p.skip_cfg_above_sigma = null;
   if (p.sampler === 'k_euler_ancestral') Object.assign(p, { deliberate_euler_ancestral_bug: false, prefer_brownian: true });
-  let action = 'generate';
+  let action = 'generate', model = m.id;
   if (o.image) {
     action = 'img2img';
     Object.assign(p, { image: await drawPng(o.image, w, h, { bg: m.v5 ? null : '#fff' }), strength: o.strength, noise: o.noise,
       extra_noise_seed: seed > 0 ? seed - 1 : 1, color_correct: false });
+  }
+  if (o.mask) { // inpaint; the untouched original is pasted back client-side afterwards (see composite)
+    action = 'infill'; model = INPAINT[m.id];
+    // the server wants a full-size mask: snap to the 8px latent grid, then nearest-neighbour back up, white on black
+    // (a latent-size mask is accepted but leaves a teal ring along the mask edge — measured 2026-10-20)
+    const full = el('canvas', { width: w, height: h }), fg = full.getContext('2d');
+    fg.fillStyle = '#000'; fg.fillRect(0, 0, w, h); fg.imageSmoothingEnabled = false; fg.drawImage(await latentMask(o.mask, w, h), 0, 0, w, h);
+    Object.assign(p, { mask: await canvasB64(full), add_original_image: false, inpaintImg2ImgStrength: o.inpaint });
+    delete p.color_correct;
+    if (o.inpaint !== 1) p.img2img = { strength: o.inpaint, color_correct: true };
+    if (!model.includes('-5-')) { delete p.straight_alpha; delete p.tag_hint_transparent_background; }
   }
   if (o.upscaledEnhance) p.upscaled_enhance = true;
   if (!m.v5 && IM.refs.length) { // Precise Reference (V4.5 only); vibes are skipped when refs exist
@@ -419,7 +525,7 @@ async function buildRequest(o = {}) {
     p.director_reference_information_extracted = refs.map(() => 1);
     p.director_reference_strength_values = refs.map(r => r.strength);
     p.director_reference_secondary_strength_values = refs.map(r => +(1 - r.fidelity).toFixed(2));
-  } else if (!m.v5 && IM.vibes.length) {
+  } else if (!m.v5 && IM.vibes.length && !o.mask) {
     const encs = [];
     for (const v of IM.vibes) encs.push(await encodeVibe(v, m));
     p.reference_image_multiple_cached = encs.map(data => ({ cache_secret_key: rkey(), data }));
@@ -427,7 +533,28 @@ async function buildRequest(o = {}) {
     if (st.length > 1 && sum > 1) st = st.map(s => +(s / sum).toFixed(4));
     p.reference_strength_multiple = st;
   }
-  return { input: prompt, model: m.id, action, parameters: p, use_new_shared_trial: true };
+  return { input: prompt, model, action, parameters: p, use_new_shared_trial: true };
+}
+
+async function latentMask(src, w, h) { // 1/8-size mask, binarized: white where painted, transparent elsewhere
+  const img = await loadImg(src), c = el('canvas', { width: w / 8, height: h / 8 }), g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, w / 8, h / 8);
+  const d = g.getImageData(0, 0, w / 8, h / 8);
+  for (let i = 0; i < d.data.length; i += 4) d.data.set(d.data[i + 3] >= 128 ? [255, 255, 255, 255] : [0, 0, 0, 0], i);
+  g.putImageData(d, 0, 0);
+  return c;
+}
+async function composite(base, result, maskSrc, w, h) { // paste the inpainted area onto the untouched original, feathered
+  const mask = await latentMask(maskSrc, w, h), grown = el('canvas', { width: w, height: h }), gg = grown.getContext('2d');
+  for (let dx = -4; dx <= 4; dx++) for (let dy = -4; dy <= 4; dy++) if (dx * dx + dy * dy <= 16) gg.drawImage(mask, dx * 8, dy * 8, w, h);
+  const soft = el('canvas', { width: w, height: h }), sg = soft.getContext('2d');
+  sg.filter = 'blur(12px)'; sg.drawImage(grown, 0, 0);
+  const res = el('canvas', { width: w, height: h }), rg = res.getContext('2d');
+  rg.drawImage(await createImageBitmap(result), 0, 0, w, h);
+  rg.globalCompositeOperation = 'destination-in'; rg.drawImage(soft, 0, 0);
+  const out = el('canvas', { width: w, height: h }), og = out.getContext('2d');
+  og.drawImage(await loadImg(base), 0, 0, w, h); og.drawImage(res, 0, 0);
+  return new Promise(r => out.toBlob(r, 'image/png'));
 }
 
 async function padRef(src) { // contain-fit on black into the closest official canvas
@@ -483,8 +610,8 @@ function price(o = {}) {
 }
 const upPrice = px => px <= 1048576 ? 1 : px <= 1747627 ? 2 : px <= 2446678 ? 3 : px <= MAX_PX ? 4 : null;
 function updateCost() {
-  const n = S.n, i2i = IM.i2i ? { strength: S.i2iStrength } : {};
-  $('#gen').textContent = `生成 ${n} 张${IM.i2i ? '（Img2Img）' : ''} · ≈${price(i2i)} Anlas`;
+  const n = S.n, o = IM.i2i ? { strength: IM.mask ? S.inpaintStrength : S.i2iStrength } : {};
+  $('#gen').textContent = `生成 ${n} 张${IM.i2i ? (IM.mask ? '（Inpaint）' : '（Img2Img）') : ''} · ≈${price(o)} Anlas`;
 }
 
 // ============ UI: render from state ============
@@ -535,7 +662,7 @@ function renderAll() {
   opts($('#sampler'), SAMPLERS, m.medium ? 'k_euler_ancestral' : S.sampler);
   $('#noiseRow').hidden = m.v5;
   opts($('#noise'), ['karras', 'exponential', 'polyexponential'].map(v => [v, v]), S.noise);
-  updateCost();
+  updateCost(); growAll();
 }
 
 function renderChars() {
@@ -546,14 +673,15 @@ function renderChars() {
     const pos = el('button', { textContent: `📍 ${m.v5 ? c.x.toFixed(2) : gridSnap(c.x)}, ${m.v5 ? c.y.toFixed(2) : gridSnap(c.y)}`, title: '设置位置',
       hidden: !S.useCoords, onclick: () => openPos(i) });
     const en = el('input', { type: 'checkbox', checked: c.enabled, title: '启用', onchange: () => { c.enabled = en.checked; save(); renderChars(); } });
-    const pr = el('textarea', { rows: 2, value: c.prompt, placeholder: '角色 prompt', oninput: () => { c.prompt = pr.value; save(); } });
-    const uc = el('textarea', { rows: 1, value: c.uc, placeholder: '该角色的 Undesired Content', disabled: m.medium, oninput: () => { c.uc = uc.value; save(); } });
+    const pr = el('textarea', { rows: 3, value: c.prompt, placeholder: '角色 prompt', oninput: () => { c.prompt = pr.value; save(); } });
+    const uc = el('textarea', { rows: 2, value: c.uc, placeholder: '该角色的 Undesired Content', disabled: m.medium, oninput: () => { c.uc = uc.value; save(); } });
     return el('div', { className: 'char' + (c.enabled ? '' : ' off') },
       el('div', { className: 'row' }, el('b', { textContent: `角色 ${i + 1}` }), pos, el('span', { className: 'grow' }), en,
         el('button', { textContent: '↑', onclick: () => mv(-1) }), el('button', { textContent: '↓', onclick: () => mv(1) }),
         el('button', { textContent: '✕', title: '删除', onclick: () => { S.chars.splice(i, 1); save(); renderChars(); } })),
       pr, uc);
   }));
+  growAll();
 }
 function addChar(prompt) {
   const used = new Set(S.chars.map(c => c.x + ',' + c.y));
@@ -584,11 +712,16 @@ function openPos(i) {
 function renderRefs() {
   const m = M(), box = $('#refs'), kids = [];
   const thumb = src => el('img', { src });
-  kids.push(el('div', { className: 'sub', textContent: 'Image2Image' }));
-  if (IM.i2i) kids.push(el('div', { className: 'ref' }, thumb(IM.i2i), el('div', { className: 'grow' },
-    slider('Strength', S.i2iStrength, 0.01, 0.99, 0.01, v => { S.i2iStrength = v; save(); updateCost(); }),
-    slider('Noise', S.i2iNoise, 0, 0.99, 0.01, v => { S.i2iNoise = v; save(); })),
-    el('button', { textContent: '✕', onclick: () => { IM.i2i = null; saveIM(); renderRefs(); updateCost(); } })));
+  kids.push(el('div', { className: 'sub', textContent: IM.mask ? 'Inpaint' : 'Image2Image' }));
+  if (IM.i2i) kids.push(el('div', { className: 'ref' },
+    el('div', { className: 'thumb' }, ...[IM.i2i, IM.mask].filter(Boolean).map(thumb)),
+    el('div', { className: 'grow' }, ...(IM.mask
+      ? [slider('Strength', S.inpaintStrength, 0.01, 1, 0.01, v => { S.inpaintStrength = v; save(); updateCost(); })]
+      : [slider('Strength', S.i2iStrength, 0.01, 0.99, 0.01, v => { S.i2iStrength = v; save(); updateCost(); }),
+         slider('Noise', S.i2iNoise, 0, 0.99, 0.01, v => { S.i2iNoise = v; save(); })]),
+      el('div', { className: 'row' }, el('button', { textContent: IM.mask ? '编辑蒙版' : '🖌 画蒙版 (Inpaint)', onclick: openMask }),
+        ...(IM.mask ? [el('button', { textContent: '去掉蒙版', onclick: () => { IM.mask = null; saveIM(); renderRefs(); updateCost(); } })] : []))),
+    el('button', { textContent: '✕', onclick: () => { IM.i2i = IM.mask = null; saveIM(); renderRefs(); updateCost(); } })));
   else kids.push(dropZone('点击或拖入底图', async f => setI2I(await fileToURL(f))));
 
   kids.push(el('div', { className: 'sub', textContent: 'Vibe Transfer' }));
@@ -629,11 +762,44 @@ async function setI2I(url) { // official sizing rule for a new base image
       .sort((p, q) => Math.abs(p[0] / p[1] - ar) - Math.abs(q[0] / q[1] - ar))[0] || [512, 512];
     [w, h] = land ? [c[1], c[0]] : c;
   }
-  IM.i2i = url; saveIM();
+  IM.i2i = url; IM.mask = null; saveIM();
+  setSize(w, h); save(); renderAll();
+}
+function setSize(w, h) {
   Object.assign(S, { w, h, res: 'Custom', orient: w > h ? 'landscape' : w < h ? 'portrait' : 'square' });
   for (const [k, p] of Object.entries(RES)) for (const [o, d] of Object.entries(p || {})) if (d[0] === w && d[1] === h) Object.assign(S, { res: k, orient: o });
-  save(); renderAll();
 }
+
+// ============ inpaint mask editor (pointer events: mouse, finger, Apple Pencil) ============
+const maskTool = { erase: false, brush: 64 };
+async function openMask() {
+  const w = S.w, h = S.h, bg = $('#maskBg'), cv = $('#maskCv');
+  for (const c of [bg, cv]) { c.width = w; c.height = h; }
+  bg.getContext('2d').drawImage(await loadImg(IM.i2i), 0, 0, w, h);
+  const g = cv.getContext('2d');
+  if (IM.mask) g.drawImage(await loadImg(IM.mask), 0, 0, w, h);
+  let last = null;
+  const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * w / r.width, (e.clientY - r.top) * h / r.height]; };
+  const stroke = (a, b) => {
+    Object.assign(g, { lineCap: 'round', lineJoin: 'round', lineWidth: maskTool.brush, strokeStyle: '#ff3b6b',
+      globalCompositeOperation: maskTool.erase ? 'destination-out' : 'source-over' });
+    g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+  };
+  cv.onpointerdown = e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = pt(e); stroke(last, last); };
+  cv.onpointermove = e => { if (!last) return; const p = pt(e); stroke(last, p); last = p; };
+  cv.onpointerup = cv.onpointercancel = () => { last = null; };
+  segOn('maskTool', maskTool.erase ? 'erase' : 'paint'); $('#brush').value = maskTool.brush;
+  maskDlg.showModal();
+}
+$('#maskTool').onclick = e => { const b = e.target.closest('button'); if (!b) return; maskTool.erase = b.dataset.v === 'erase'; segOn('maskTool', b.dataset.v); };
+$('#brush').oninput = e => { maskTool.brush = +e.target.value; };
+$('#maskClear').onclick = () => { const cv = $('#maskCv'); cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); };
+$('#maskDone').onclick = () => {
+  const cv = $('#maskCv'), px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  let painted = false; for (let i = 3; i < px.length; i += 4) if (px[i]) { painted = true; break; }
+  IM.mask = painted ? cv.toDataURL('image/png') : null; saveIM();
+  maskDlg.close(); renderRefs(); updateCost();
+};
 
 // ============ UI: wiring ============
 $('#model').onchange = e => { S.model = e.target.value; save(); renderAll(); };
@@ -681,7 +847,7 @@ async function addResults(files, body, kind) {
   const recs = [];
   for (const [i, f] of files.entries()) {
     const bmp = await createImageBitmap(f.blob);
-    recs.push({ id: Date.now() + '-' + i, ts: Date.now(), kind, blob: f.blob, w: bmp.width, h: bmp.height,
+    recs.push({ id: Date.now() + '-' + i, ts: Date.now(), kind, blob: f.blob, w: bmp.width, h: bmp.height, meta: f.meta ?? await readMeta(f.blob),
       seed: (body?.parameters.seed ?? 0) + i, model: body?.model, prompt: body?.input,
       state: kind === 'upscale' ? cur()?.state : { ...S, seed: '' } });
     bmp.close();
@@ -703,7 +869,7 @@ function renderHist() {
 }
 function updateTools() {
   const r = cur();
-  for (const b of $('#toolbar').querySelectorAll('button')) b.disabled = busy || !r;
+  for (const b of $('#toolbar').querySelectorAll('[data-act]')) b.disabled = busy || !r;
   if (r) { const p = upPrice(r.w * r.h); $('#upBtn').textContent = p ? `Upscale ×2 · ${p} Anlas` : 'Upscale（图太大）'; if (!p) $('#upBtn').disabled = true; }
   $('#gen').disabled = busy;
 }
@@ -729,9 +895,12 @@ async function generate(o) {
   const r = await post(IMG + '/ai/generate-image', body);
   const files = (await unzip(await r.arrayBuffer())).filter(f => f.name.startsWith('image'));
   if (!files.length) throw new Error('响应里没有图片');
-  await addResults(files, body, o.enhance || o.upscaledEnhance ? 'enhance' : 'gen');
+  for (const f of files) f.meta = await readMeta(f.blob);
+  if (o.mask) for (const f of files) f.blob = await composite(o.image, f.blob, o.mask, body.parameters.width, body.parameters.height);
+  await addResults(files, body, o.mask ? 'inpaint' : o.enhance || o.upscaledEnhance ? 'enhance' : 'gen');
 }
-$('#gen').onclick = () => run(() => generate(IM.i2i ? { image: IM.i2i, strength: S.i2iStrength, noise: S.i2iNoise } : {}));
+$('#gen').onclick = () => run(() => generate(IM.i2i ? { image: IM.i2i, strength: S.i2iStrength, noise: S.i2iNoise,
+  mask: IM.mask, inpaint: S.inpaintStrength } : {}));
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#gen').click(); });
 
 async function asPng(blob) {
@@ -742,13 +911,15 @@ async function asPng(blob) {
 }
 $('#toolbar').onclick = async e => {
   const act = e.target.closest('button')?.dataset.act, r = cur(); if (!act || !r) return;
-  if (act === 'download') {
-    const a = el('a', { href: URL.createObjectURL(await asPng(r.blob)), download: `nai-${r.kind}-${r.seed}-${r.ts}.png` });
+  if (act === 'download') { // PNG with the NovelAI metadata as tEXt, so it can be imported again
+    const png = await asPng(r.blob), out = (await readMeta(png)) ? png : await pngWithMeta(png, r.meta);
+    const a = el('a', { href: URL.createObjectURL(out), download: `nai-${r.kind}-${r.seed}-${r.ts}.png` });
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   if (act === 'seed') { S.seed = r.seed; save(); renderAll(); status('Seed 已填入 ' + r.seed); }
   if (act === 'reuse' && r.state) { S = { ...DEF, ...r.state, seed: r.kind === 'gen' ? r.seed : '' }; save(); renderAll(); status('参数已复用'); }
   if (act === 'i2i') setI2I(await fileToURL(await asPng(r.blob)));
+  if (act === 'inpaint') { await setI2I(await fileToURL(await asPng(r.blob))); openMask(); }
   if (act === 'enhance') openEnhance(r);
   if (act === 'upscale') run(async () => {
     const res = await post(IMG + '/ai/upscale', { image: await blobToB64(await asPng(r.blob)), model: 'nai-diffusion-5-curated', declared_blur_sigma: 0 });
@@ -792,6 +963,81 @@ $('#enhGo').onclick = () => {
   run(async () => generate({ image: await fileToURL(r.blob), strength: enh.str, noise: enh.noise, w, h, n: 1, seed: randSeed(),
     enhance: enh.amt !== 'max', upscaledEnhance: enh.amt === 'max' }));
 };
+
+// ============ import settings from an image's NovelAI metadata (mirrors the official importer) ============
+async function openImport(file) {
+  const url = await fileToURL(file), meta = await readMeta(file);
+  let c = null; try { c = meta && JSON.parse(meta.Comment); } catch { }
+  $('#impImg').src = url;
+  $('#impInfo').textContent = c ? `${meta.Source || meta.Software || 'NovelAI'} · ${c.width}×${c.height} · seed ${c.seed}`
+    : '这张图里没有 NovelAI 元数据，只能作为参考图使用。';
+  const opts = [['prompt', 'Prompt'], ['uc', 'Undesired Content'], ['chars', '角色'], ['settings', '设置（模型、尺寸、步数、Guidance、Sampler）'], ['seed', 'Seed']];
+  $('#impOpts').replaceChildren(...(c ? opts.map(([k, t]) => el('label', { className: 'chk' }, el('input', { type: 'checkbox', checked: true, name: k }), t)) : []));
+  $('#impGo').hidden = !c;
+  $('#impGo').onclick = () => {
+    applyMeta(meta, c, Object.fromEntries([...$('#impOpts').querySelectorAll('input')].map(i => [i.name, i.checked])));
+    impDlg.close();
+  };
+  $('#impI2I').onclick = () => { impDlg.close(); setI2I(url); };
+  $('#impVibe').onclick = () => { impDlg.close(); addRef('vibes', { src: url, strength: 0.6, ie: MODELS['v45-full'].vibeIE, enc: {} }); };
+  $('#impRef').onclick = () => { impDlg.close(); addRef('refs', { src: url, type: 'character&style', strength: 1, fidelity: 1 }); };
+  impDlg.showModal();
+}
+function applyMeta(meta, c, o) {
+  const src = meta.Source || '', key = SOURCE[src.split(' ').pop()] || (src.includes('V5') ? 'v5-curated' : src.includes('V4.5') ? 'v45-curated' : null);
+  if (o.settings && key) Object.assign(S, key === 'v5-medium' ? { model: 'v5-full', effort: 'medium' } : { model: key, ...(key === 'v5-full' && { effort: 'high' }) });
+  const m = key ? { ...MODELS[key === 'v5-medium' ? 'v5-full' : key] } : M(); // strip presets of the model that made it
+  const cap = c.v4_prompt?.caption || {}, ncap = c.v4_negative_prompt?.caption || {};
+  if (o.prompt) {
+    let p = cap.base_caption ?? meta.Description ?? c.prompt ?? '';
+    S.mode = p.startsWith('fur dataset, ') ? 'furry' : 'anime';
+    p = p.replace(/^fur dataset, /, '').replace(/,?\s*teXt:[\s\S]*$/, '').replace(', -2::upscaled, blurry::,', '');
+    const at = textAt(p), tail = at < 0 ? '' : p.slice(at);
+    let head = (at < 0 ? p : p.slice(0, at)).replace(/[\s,]+$/, '');
+    const hinted = Object.keys(HINT).find(k => HINT[k] === c.tag_hint_qt);
+    Object.assign(S, { quality: 'none', tbg: false });
+    find: for (const id of [hinted, ...Object.keys(m.q)].filter((k, i, a) => k && m.q[k] !== undefined && a.indexOf(k) === i))
+      for (const tbg of c.tag_hint_transparent_background === true ? [true, false] : [false]) {
+        const suf = tbg ? (m.q[id] ? 'transparent background, ' + m.q[id] : 'transparent background') : m.q[id];
+        if (suf && (head === suf || head.endsWith(', ' + suf))) {
+          head = head.slice(0, head.length - suf.length).replace(/[\s,]+$/, ''); Object.assign(S, { quality: id, tbg }); break find;
+        }
+      }
+    S.prompt = head + (tail ? (head ? ', ' : '') + tail : '');
+  }
+  if (o.uc) {
+    let u = c.uc ?? ncap.base_caption ?? '';
+    if (u === 'lowres') u = ''; else if (u.startsWith('nsfw')) u = u.slice(4).replace(/^, /, '');
+    const hinted = Object.keys(HINT).find(k => HINT[k] === c.tag_hint_uc_preset);
+    S.ucPreset = 'none';
+    for (const id of [hinted, ...Object.keys(m.uc).sort((a, b) => m.uc[b].length - m.uc[a].length)])
+      if (id && m.uc[id] && u.startsWith(m.uc[id])) { S.ucPreset = id; u = u.slice(m.uc[id].length).replace(/^,\s*/, ''); break; }
+    S.uc = u;
+  }
+  if (o.chars) {
+    S.chars = (cap.char_captions || []).map((x, i) => ({ prompt: x.char_caption || '', uc: ncap.char_captions?.[i]?.char_caption || '',
+      x: x.centers?.[0]?.x ?? 0.5, y: x.centers?.[0]?.y ?? 0.5, enabled: true }));
+    S.useCoords = !!c.v4_prompt?.use_coords;
+  }
+  if (o.settings) {
+    if (c.width && c.height) setSize(c.width, c.height);
+    for (const [k, v] of [['steps', c.steps], ['scale', c.scale], ['rescale', c.cfg_rescale]]) if (typeof v === 'number') S[k] = v;
+    if (SAMPLERS.some(([v]) => v === c.sampler)) S.sampler = c.sampler;
+    if (['karras', 'exponential', 'polyexponential'].includes(c.noise_schedule)) S.noise = c.noise_schedule;
+  }
+  if (o.seed && c.seed != null) S.seed = c.seed;
+  save(); renderAll();
+  status(key ? '已导入' : '已导入（这张图来自 V4 / V3 等不支持的模型，模型没有切换）');
+}
+$('#impBtn').onclick = () => { const f = $('#filePick'); f.onchange = () => { if (f.files[0]) openImport(f.files[0]); f.value = ''; }; f.click(); };
+$('#stage').ondragover = e => e.preventDefault();
+$('#stage').ondrop = e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) openImport(f); };
+
+// ============ textareas grow with their content (iPad has no resize handle) ============
+const grow = t => { if (!t.offsetParent) return; t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; };
+const growAll = () => requestAnimationFrame(() => document.querySelectorAll('textarea').forEach(grow));
+document.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA') grow(e.target); });
+window.addEventListener('resize', growAll);
 
 // ============ boot ============
 (async () => {
