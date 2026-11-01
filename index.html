@@ -402,17 +402,32 @@ let S = { ...DEF, ...JSON.parse(localStorage.getItem('nai-studio') || '{}') };
 const save = () => localStorage.setItem('nai-studio', JSON.stringify(S));
 const getKey = () => localStorage.getItem('nai-key') || '';
 
-const dbp = new Promise((res, rej) => {
+// iPad Safari closes idle IndexedDB connections (backgrounded tab, storage pressure); reopen on demand.
+let dbp = null;
+const openDB = () => dbp ||= new Promise((res, rej) => {
   const r = indexedDB.open('nai-studio', 1);
   r.onupgradeneeded = () => { r.result.createObjectStore('h', { keyPath: 'id' }); r.result.createObjectStore('kv'); };
-  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  r.onsuccess = () => {
+    const d = r.result;
+    d.onclose = () => { dbp = null; };
+    d.onversionchange = () => { d.close(); dbp = null; };
+    res(d);
+  };
+  r.onerror = () => { dbp = null; rej(r.error); };
 });
-async function idb(store, mode, fn) {
-  const d = await dbp;
-  return new Promise((res, rej) => {
-    const t = d.transaction(store, mode), r = fn(t.objectStore(store));
-    t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error);
-  });
+async function idb(store, mode, fn, retry = true) {
+  const d = await openDB();
+  try {
+    return await new Promise((res, rej) => {
+      const t = d.transaction(store, mode), r = fn(t.objectStore(store));
+      t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  } catch (e) {
+    if (!retry || e?.name !== 'InvalidStateError') throw e;  // "connection is closing" → reopen once
+    try { d.close(); } catch {}
+    dbp = null;
+    return idb(store, mode, fn, false);
+  }
 }
 // reference images: { i2i: dataURL|null, mask: dataURL|null (inpaint strokes, alpha = paint), vibes: [{src, strength, ie, enc:{}}], refs: [{src, type, strength, fidelity}] }
 let IM = { i2i: null, mask: null, vibes: [], refs: [] };
