@@ -290,6 +290,12 @@ const RES = {
 const SAMPLERS = [['k_euler_ancestral', 'Euler Ancestral'], ['k_euler', 'Euler'], ['k_dpmpp_2s_ancestral', 'DPM++ 2S Ancestral'],
   ['k_dpmpp_2m_sde', 'DPM++ 2M SDE'], ['k_dpmpp_2m', 'DPM++ 2M'], ['k_dpmpp_sde', 'DPM++ SDE']];
 const REF_TYPES = [['character&style', 'Character & Style'], ['character', 'Character'], ['style', 'Style']];
+// V5 Precise Reference (2026-11-24): outfit references and the "prefer same outfit" toggle are part of the type
+const REF_TYPES_V5 = [['character&style', 'Character & Style（保留服装）'], ['character&style_anyoutfit', 'Character & Style（可换装）'],
+  ['character_mainoutfit', 'Character（保留服装）'], ['character', 'Character（可换装）'], ['style', 'Style'], ['costume', 'Outfit']];
+const V45_TYPE = { 'character&style_anyoutfit': 'character&style', character_mainoutfit: 'character', costume: null }; // V4.5 has no outfit types
+const refsFor = (m, mask) => m.v5 ? (mask ? [] : IM.refs.slice(0, 16)) // V5 inpainting takes no references
+  : IM.refs.map(r => ({ ...r, type: r.type in V45_TYPE ? V45_TYPE[r.type] : r.type })).filter(r => r.type).slice(0, 16);
 const REF_SIZES = [[1024, 1536], [1536, 1024], [1472, 1472]];
 const MAGNITUDE = [[0.2, 0], [0.4, 0], [0.5, 0], [0.6, 0], [0.7, 0.1]];
 const INPAINT = { // the official client sends V5 Curated inpaints to the V4.5 Curated inpainting model
@@ -533,13 +539,14 @@ async function buildRequest(o = {}) {
     if (!model.includes('-5-')) { delete p.straight_alpha; delete p.tag_hint_transparent_background; }
   }
   if (o.upscaledEnhance) p.upscaled_enhance = true;
-  if (!m.v5 && IM.refs.length) { // Precise Reference (V4.5 only); vibes are skipped when refs exist
-    const refs = IM.refs.slice(0, 16);
-    p.director_reference_images_cached = await Promise.all(refs.map(async r => ({ cache_secret_key: rkey(), data: await padRef(r.src) })));
+  const refs = refsFor(m, o.mask);
+  if (refs.length) { // Precise Reference; vibes are skipped when refs exist
+    if (m.v5) p.director_reference_images = await Promise.all(refs.map(r => bucketRef(r.src))); // plain list: accepted by the live API 2026-11-26
+    else p.director_reference_images_cached = await Promise.all(refs.map(async r => ({ cache_secret_key: rkey(), data: await padRef(r.src) })));
     p.director_reference_descriptions = refs.map(r => ({ caption: { base_caption: r.type, char_captions: [] }, legacy_uc: false }));
     p.director_reference_information_extracted = refs.map(() => 1);
-    p.director_reference_strength_values = refs.map(r => r.strength);
-    p.director_reference_secondary_strength_values = refs.map(r => +(1 - r.fidelity).toFixed(2));
+    p.director_reference_strength_values = refs.map(r => m.v5 ? r.strength : Math.min(r.strength, 1));
+    p.director_reference_secondary_strength_values = refs.map(r => m.v5 ? 0 : +(1 - r.fidelity).toFixed(2)); // V5 has no fidelity
   } else if (!m.v5 && IM.vibes.length && !o.mask) {
     const encs = [];
     for (const v of IM.vibes) encs.push(await encodeVibe(v, m));
@@ -576,6 +583,14 @@ async function padRef(src) { // contain-fit on black into the closest official c
   const img = await loadImg(src), ar = img.width / img.height;
   const [w, h] = REF_SIZES.reduce((a, b) => Math.abs(Math.log(ar * b[1] / b[0])) < Math.abs(Math.log(ar * a[1] / a[0])) ? b : a);
   return drawPng(src, w, h, { bg: '#000', fit: 'contain' });
+}
+async function bucketRef(src) { // V5: cover-fit and centre-crop into the closest ~1 MP bucket (64 px grid), as the official client
+  const img = await loadImg(src), ar = Math.log(img.width / img.height), port = [];
+  for (let h = 4096; h >= 1024; h -= 64) port.push([Math.floor(1048576 / h / 64) * 64, h]);
+  const [w, h] = [...port, ...port.slice(0, -1).map(([a, b]) => [b, a])].reduce((a, b) => Math.abs(ar - Math.log(b[0] / b[1])) < Math.abs(ar - Math.log(a[0] / a[1])) ? b : a);
+  const c = el('canvas', { width: w, height: h }), g = c.getContext('2d'), k = Math.max(w / img.width, h / img.height);
+  g.imageSmoothingQuality = 'high'; g.drawImage(img, (w - img.width * k) / 2, (h - img.height * k) / 2, img.width * k, img.height * k);
+  return canvasB64(c);
 }
 
 // ============ network ============
@@ -619,8 +634,9 @@ function price(o = {}) {
   let base = Math.ceil(2.951823174884865e-6 * px + 5.753298233447344e-7 * px * steps * (m.medium ? 1 / 1.06521739 : 1));
   if (m.v5) base *= 1.5;
   const per = Math.max(Math.ceil(base * (o.strength ?? 1)), 2), n = o.n ?? S.n;
-  const refs = m.v5 ? 0 : IM.refs.length, vibes = m.v5 || refs ? [] : IM.vibes;
-  const paid = SUB?.opus && px <= 1048576 && steps <= 28 && !refs ? n - 1 : n;
+  const refs = refsFor(m, IM.i2i && IM.mask).length, vibes = m.v5 || refs ? [] : IM.vibes;
+  // V5: the base image stays Opus-free with references, only the 5 Anlas per reference is charged (measured 2026-11-26)
+  const paid = SUB?.opus && px <= 1048576 && steps <= 28 && (m.v5 || !refs) ? n - 1 : n;
   return per * paid + 2 * vibes.filter(v => !v.enc[m.id + '|' + v.ie]).length + 2 * Math.max(0, vibes.length - 4) + 5 * refs * n;
 }
 const upPrice = px => px <= 1048576 ? 1 : px <= 1747627 ? 2 : px <= 2446678 ? 3 : px <= MAX_PX ? 4 : null;
@@ -750,23 +766,24 @@ function renderRefs() {
   kids.push(el('div', { className: 'sub', textContent: 'Precise Reference' }));
   IM.refs.forEach((r, i) => {
     const type = el('select', { onchange: () => { r.type = type.value; saveIM(); } });
-    opts(type, REF_TYPES, r.type);
+    opts(type, m.v5 ? REF_TYPES_V5 : REF_TYPES, r.type in V45_TYPE && !m.v5 ? V45_TYPE[r.type] || 'character&style' : r.type);
     kids.push(el('div', { className: 'ref' }, thumb(r.src), el('div', { className: 'grow' }, type,
-      slider('强度', r.strength, 0, 1, 0.01, x => { r.strength = x; saveIM(); }),
-      slider('Fidelity', r.fidelity, 0, 1, 0.01, x => { r.fidelity = x; saveIM(); })),
+      slider('强度', m.v5 ? r.strength : Math.min(r.strength, 1), 0, m.v5 ? 5 : 1, 0.01, x => { r.strength = x; saveIM(); }),
+      ...(m.v5 ? [] : [slider('Fidelity', r.fidelity, 0, 1, 0.01, x => { r.fidelity = x; saveIM(); })])),
       el('button', { textContent: '✕', onclick: () => { IM.refs.splice(i, 1); saveIM(); renderRefs(); updateCost(); } })));
   });
-  if (IM.refs.length < 16) kids.push(dropZone('+ 添加角色/风格参考（V4.5，+5 Anlas/张）', async f => addRef('refs', { src: await fileToURL(f), type: 'character&style', strength: 1, fidelity: 1 })));
+  if (IM.refs.length < 16) kids.push(dropZone('+ 添加角色/风格/服装参考（+5 Anlas/张）', async f => addRef('refs', { src: await fileToURL(f), type: 'character&style', strength: 1, fidelity: 1 })));
 
   const notes = [];
-  if (m.v5) notes.push('V5 目前没有 Vibe / Precise Reference（官网也一样，说是后续加）。添加它们会自动切到 V4.5。' + (IM.vibes.length || IM.refs.length ? ' 当前为 V5，下面这些参考不会发送。' : ''));
+  if (m.v5) notes.push('V5 支持 Precise Reference（强度 0–5，没有 Fidelity；每张参考每张图 5 Anlas，Opus 也不免；Inpaint 时不发送）。V5 没有 Vibe，添加 Vibe 会自动切到 V4.5。' + (IM.vibes.length ? ' 当前为 V5，Vibe 不会发送。' : ''));
+  else if (IM.refs.some(r => r.type === 'costume')) notes.push('V4.5 不支持 Outfit 参考，这类参考不会发送。');
   if (IM.vibes.length && IM.refs.length) notes.push('同时有两种时只发送 Precise Reference，Vibe 被忽略（官网行为）。');
   if (notes.length) kids.push(el('div', { className: 'hint', textContent: notes.join(' ') }));
   box.replaceChildren(...kids);
 }
 function addRef(kind, item) {
   IM[kind].push(item); saveIM();
-  if (M().v5) { S.model = S.model === 'v5-curated' ? 'v45-curated' : 'v45-full'; save(); status('已切换到 ' + MODELS[S.model].name); }
+  if (M().v5 && kind === 'vibes') { /* V5 has no vibes */ S.model = S.model === 'v5-curated' ? 'v45-curated' : 'v45-full'; save(); status('已切换到 ' + MODELS[S.model].name); }
   renderAll();
 }
 async function setI2I(url) { // official sizing rule for a new base image
