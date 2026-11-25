@@ -294,7 +294,7 @@ const REF_TYPES = [['character&style', 'Character & Style'], ['character', 'Char
 const REF_TYPES_V5 = [['character&style', 'Character & Style（保留服装）'], ['character&style_anyoutfit', 'Character & Style（可换装）'],
   ['character_mainoutfit', 'Character（保留服装）'], ['character', 'Character（可换装）'], ['style', 'Style'], ['costume', 'Outfit']];
 const V45_TYPE = { 'character&style_anyoutfit': 'character&style', character_mainoutfit: 'character', costume: null }; // V4.5 has no outfit types
-const refsFor = (m, mask) => m.v5 ? (mask ? [] : IM.refs.slice(0, 16)) // V5 inpainting takes no references
+const refsFor = (m, mask) => m.v5 ? (mask || m.medium ? [] : IM.refs.slice(0, 16)) // V5 inpainting and Effort Medium take no references
   : IM.refs.map(r => ({ ...r, type: r.type in V45_TYPE ? V45_TYPE[r.type] : r.type })).filter(r => r.type).slice(0, 16);
 const REF_SIZES = [[1024, 1536], [1536, 1024], [1472, 1472]];
 const MAGNITUDE = [[0.2, 0], [0.4, 0], [0.5, 0], [0.6, 0], [0.7, 0.1]];
@@ -775,7 +775,7 @@ function renderRefs() {
   if (IM.refs.length < 16) kids.push(dropZone('+ 添加角色/风格/服装参考（+5 Anlas/张）', async f => addRef('refs', { src: await fileToURL(f), type: 'character&style', strength: 1, fidelity: 1 })));
 
   const notes = [];
-  if (m.v5) notes.push('V5 支持 Precise Reference（强度 0–5，没有 Fidelity；每张参考每张图 5 Anlas，Opus 也不免；Inpaint 时不发送）。V5 没有 Vibe，添加 Vibe 会自动切到 V4.5。' + (IM.vibes.length ? ' 当前为 V5，Vibe 不会发送。' : ''));
+  if (m.v5) notes.push('V5 支持 Precise Reference（强度 0–5，没有 Fidelity；每张参考每张图 5 Anlas，Opus 也不免；Inpaint 时不发送）。V5 没有 Vibe，添加 Vibe 会自动切到 V4.5。' + (IM.vibes.length ? ' 当前为 V5，Vibe 不会发送。' : '') + (m.medium && IM.refs.length ? ' Effort Medium 不支持 Precise Reference，参考不会发送，切到 High 才生效。' : ''));
   else if (IM.refs.some(r => r.type === 'costume')) notes.push('V4.5 不支持 Outfit 参考，这类参考不会发送。');
   if (IM.vibes.length && IM.refs.length) notes.push('同时有两种时只发送 Precise Reference，Vibe 被忽略（官网行为）。');
   if (notes.length) kids.push(el('div', { className: 'hint', textContent: notes.join(' ') }));
@@ -783,6 +783,7 @@ function renderRefs() {
 }
 function addRef(kind, item) {
   IM[kind].push(item); saveIM();
+  if (kind === 'refs' && M().medium) { S.effort = 'high'; save(); status('Effort Medium 不支持 Precise Reference，已切到 High'); }
   if (M().v5 && kind === 'vibes') { /* V5 has no vibes */ S.model = S.model === 'v5-curated' ? 'v45-curated' : 'v45-full'; save(); status('已切换到 ' + MODELS[S.model].name); }
   renderAll();
 }
